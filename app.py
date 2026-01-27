@@ -60,12 +60,8 @@ def train_model(df):
 
 pipeline, X_train, X_test, mae, r2 = train_model(df)
 
-@st.cache_resource
-def make_explainer(pipeline):
-    rf = pipeline.named_steps["model"]
-    return shap.TreeExplainer(rf)
-
-explainer = make_explainer(pipeline)
+rf = pipeline.named_steps["model"]
+explainer = shap.TreeExplainer(rf)
 
 def transform_with_names(pipeline, X):
     pre = pipeline.named_steps["preprocess"]
