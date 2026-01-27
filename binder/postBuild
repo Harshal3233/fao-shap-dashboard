@@ -1,0 +1,13 @@
+#!/bin/bash
+set -e
+
+# Make sure the postBuild script is executable
+chmod +x binder/postBuild || true
+
+# Streamlit behind proxies: relax these for demo environments
+mkdir -p ~/.streamlit
+cat > ~/.streamlit/config.toml << 'EOF'
+[server]
+enableCORS = false
+enableXsrfProtection = false
+EOF
