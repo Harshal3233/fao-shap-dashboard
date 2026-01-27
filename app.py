@@ -71,6 +71,44 @@ def transform_with_names(pipeline, X):
     return X_trans, names
 
 st.title("🌾 FAOSTAT Explainable AI Dashboard")
+with st.expander("📘 About this project (context, data & methodology)", expanded=True):
+    st.markdown("""
+    ### 🌍 Project context
+    This dashboard is a **demonstration data science project** inspired by the type of analytical
+    work conducted at international organizations such as the FAO.
+
+    It compares **agricultural production volumes** across four EU countries
+    (Italy, France, Germany, Spain) using FAOSTAT-derived data.
+
+    The goal is **not forecasting**, but **interpretation and comparison**:
+    understanding what drives differences in production values across countries and items.
+
+    ### 📊 Data
+    - Source: **FAOSTAT** (Crops and livestock products)
+    - Countries: Italy, France, Germany, Spain
+    - Scope: Single-year snapshot
+    - Unit: Metric tonnes (t)
+    - Each row represents: *(Country, Item → Production Value)*
+
+    ### 🤖 Model
+    A **Random Forest regression model** is trained to estimate production values using:
+    - Country (categorical)
+    - Item (crop type)
+
+    Performance metrics (MAE, R²) are displayed for transparency, not as an official benchmark.
+
+    ### 🔍 Explainability (SHAP)
+    SHAP (SHapley Additive exPlanations) decomposes each prediction into contributions:
+    - Positive SHAP values push the estimate upward
+    - Negative SHAP values push the estimate downward
+
+    Aggregated SHAP values support cross-country comparison of structural drivers.
+    """)
+
+    st.caption(
+        "⚠️ Disclaimer: This dashboard is an educational case study. "
+        "Results are not official FAO estimates or forecasts."
+    )
 c1, c2, c3 = st.columns(3)
 c1.metric("Rows", f"{len(df)}")
 c2.metric("MAE", f"{mae:,.0f}")
@@ -79,6 +117,7 @@ c3.metric("R²", f"{r2:.3f}")
 tab1, tab2, tab3 = st.tabs(["Explore", "Predict + Explain", "Insights"])
 
 with tab1:
+    st.caption("Browse and compare agricultural production by country and item.")
     st.subheader("Explore")
     country = st.selectbox("Country", sorted(df["Country"].unique()))
     df_c = df[df["Country"] == country]
@@ -96,6 +135,7 @@ with tab1:
     )
 
 with tab2:
+    st.caption("Select a country and item to view a model estimate and SHAP explanation.")
     st.subheader("Predict + Explain (SHAP)")
     country = st.selectbox("Country", sorted(df["Country"].unique()), key="p_country")
     item = st.selectbox("Item", sorted(df[df["Country"] == country]["Item"].unique()), key="p_item")
@@ -124,6 +164,7 @@ with tab2:
     )
 
 with tab3:
+    st.caption("View aggregated SHAP metrics to compare structural drivers across countries.")
     st.subheader("Insights (aggregated SHAP)")
     X_sample = X_test.sample(min(30, len(X_test)), random_state=42)
     X_trans, names = transform_with_names(pipeline, X_sample)
