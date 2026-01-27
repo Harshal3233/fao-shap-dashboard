@@ -460,3 +460,4 @@ Because we take **absolute values**, this measures **strength of influence**, no
 - In **Tonnes** mode, you see absolute magnitude (big producers dominate visually).
 - In **Share (%)** mode, you see structure: which crops make up a larger fraction of a country’s total.
 This helps separate “big because total is big” from “big because composition is different”.
+""")
