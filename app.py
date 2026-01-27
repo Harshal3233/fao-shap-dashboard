@@ -70,10 +70,10 @@ def transform_with_names(pipeline, X):
     names = ohe.get_feature_names_out(FEATURES)
     return X_trans, names
 
-st.title("🌾 FAOSTAT Explainable AI Dashboard")
-with st.expander("📘 About this project (context, data & methodology)", expanded=True):
+st.title(" FAOSTAT Explainable AI Dashboard")
+with st.expander(" About this project (context, data & methodology)", expanded=True):
     st.markdown("""
-    ### 🌍 Project context
+    ###  Project context
     This dashboard is a **demonstration data science project** inspired by the type of analytical
     work conducted at international organizations such as the FAO.
 
@@ -83,30 +83,71 @@ with st.expander("📘 About this project (context, data & methodology)", expand
     The goal is **not forecasting**, but **interpretation and comparison**:
     understanding what drives differences in production values across countries and items.
 
-    ### 📊 Data
+    ###  Data
     - Source: **FAOSTAT** (Crops and livestock products)
     - Countries: Italy, France, Germany, Spain
     - Scope: Single-year snapshot
     - Unit: Metric tonnes (t)
     - Each row represents: *(Country, Item → Production Value)*
 
-    ### 🤖 Model
+    ###  Model
     A **Random Forest regression model** is trained to estimate production values using:
     - Country (categorical)
     - Item (crop type)
 
     Performance metrics (MAE, R²) are displayed for transparency, not as an official benchmark.
 
-    ### 🔍 Explainability (SHAP)
+    ###  Explainability (SHAP)
     SHAP (SHapley Additive exPlanations) decomposes each prediction into contributions:
     - Positive SHAP values push the estimate upward
     - Negative SHAP values push the estimate downward
 
     Aggregated SHAP values support cross-country comparison of structural drivers.
     """)
+    with st.expander("📘 About this project (summary, data, methodology & conclusions)", expanded=True):
+    st.markdown("""
+    ### 🌍 Project context
+    This dashboard is a **demonstration data science project** inspired by analytical work
+    carried out at international organizations such as the FAO.
+
+    It compares **agricultural production volumes** across four EU countries
+    (Italy, France, Germany, Spain) using FAOSTAT-derived data.
+
+    The objective is **interpretation and comparison**, not forecasting.
+
+    ### 📊 Data
+    - Source: **FAOSTAT**
+    - Countries: Italy, France, Germany, Spain
+    - Scope: Single-year snapshot
+    - Unit: Metric tonnes (t)
+
+    ### 🤖 Model
+    A **Random Forest regression model** estimates production values using:
+    - Country
+    - Item (crop type)
+
+    Model metrics (MAE, R²) are shown for transparency.
+
+    ###  Explainability (SHAP)
+    SHAP explains each estimate by decomposing it into feature contributions.
+    This enables transparent interpretation at both **individual** and **aggregate** levels.
+
+    ###  Key findings (in a nutshell)
+    - Item type is the strongest driver of production magnitude
+    - Country effects reflect structural and geographic differences
+    - Countries vary in how strongly item choice influences output
+
+    ###  Conclusion
+    Explainable machine learning can complement traditional statistics by
+    revealing **structural drivers** behind observed agricultural patterns.
+    """)
 
     st.caption(
-        "⚠️ Disclaimer: This dashboard is an educational case study. "
+        " Disclaimer: This dashboard is an educational case study and not an official FAO product."
+    )
+
+    st.caption(
+        " Disclaimer: This dashboard is an educational case study. "
         "Results are not official FAO estimates or forecasts."
     )
 c1, c2, c3 = st.columns(3)
