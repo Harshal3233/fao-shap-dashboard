@@ -12,10 +12,12 @@ from sklearn.preprocessing import OneHotEncoder
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, r2_score
 
+
 # =========================================================
 # Page config
 # =========================================================
-st.set_page_config(page_title="FAOSTAT XAI Case Study Dashboard", layout="wide")
+st.set_page_config(page_title="FAOSTAT XAI Case Study", layout="wide")
+
 
 # =========================================================
 # Data
@@ -37,19 +39,21 @@ def load_data():
         ignore_index=True,
     )
 
-    # Keep only what we need for this case study
+    # Minimal columns for this study
     df["Value"] = pd.to_numeric(df["Value"], errors="coerce")
     df = df.dropna(subset=["Value"])
     df = df[["Country", "Item", "Value"]].copy()
 
     df["Country"] = df["Country"].astype(str)
     df["Item"] = df["Item"].astype(str)
+
     return df
 
 
 df = load_data()
 FEATURES = ["Country", "Item"]
 TARGET = "Value"
+
 
 # =========================================================
 # Model training
@@ -89,8 +93,10 @@ pipeline, X_train, X_test, y_train, y_test, mae, r2 = train_model(df)
 median_value = float(df["Value"].median()) if len(df) else np.nan
 relative_mae = (mae / median_value) * 100 if median_value and not np.isnan(median_value) else np.nan
 
+
 # =========================================================
-# SHAP explainer (IMPORTANT: no caching with pipeline param)
+# SHAP explainer
+# IMPORTANT: do NOT cache a function that takes 'pipeline' as param
 # =========================================================
 rf_model = pipeline.named_steps["model"]
 explainer = shap.TreeExplainer(rf_model)
@@ -106,56 +112,76 @@ def transform_with_names(pipeline: Pipeline, X: pd.DataFrame):
 # =========================================================
 # Header
 # =========================================================
-st.title(" FAOSTAT Explainable ML Case Study (Italy • France • Germany • Spain)")
+st.title(" FAOSTAT Explainable ML Dashboard (Case Study)")
+st.caption("Italy • France • Germany • Spain | Explainable ML + Interactive Comparison")
+
 
 # =========================================================
-# Full embedded case study
+# Narrative block: Motivation -> Problem -> Solution -> Theory -> Next steps
+# (More detailed, structured, and intentionally not '100% complete')
 # =========================================================
-with st.expander(" Full case study (what, why, how, results, interpretation)", expanded=True):
+with st.expander(" Case Study Narrative (Motivation → Problem → Solution → Theory → Next steps)", expanded=True):
     st.markdown("""
-## 1) Motivation
-In multi-country agricultural analysis, the goal is often **interpretable comparison** rather than forecasting.
-This dashboard is designed to show how explainable ML can help answer: **what differs across countries, and why**.
+## 1) Motivation (why this matters)
+In international agricultural analysis, decision-makers often need to compare countries transparently:
+- What is different across countries?
+- Which crops dominate production?
+- Are observed differences primarily about crop composition or broader structural context?
 
-## 2) Analytical questions (what this project answers)
-1. **Crop vs Country:** Are differences in production mostly explained by the **crop (Item)** or the **country context**?
-2. **Structural profiles:** Do countries show different production structure once crop composition is considered?
-3. **Explainable ML:** Can ML be used as a transparent analytical tool (not a black box) to support reasoning?
+In many practical settings, the objective is not purely forecasting, but **interpretable comparison** and **clear communication**.
 
-## 3) Data
-FAOSTAT-derived production values (unit: **tonnes**) for four EU countries.
-Each row represents a (Country, Item) observation with an associated production value.
+## 2) The issue (the analytical gap)
+Simple totals and rankings tell *what* is produced, but not *why* differences occur.  
+A common gap is separating two intertwined drivers:
+- **Item effects**: “This country looks high because it produces high-volume crops.”
+- **Country effects**: “This country looks high because country context amplifies output (structure, geography, systems).”
 
-## 4) Why Random Forest?
-Random Forest is used as a flexible approximation of the relationship between:
-- **Country** (structural/institutional/geographic context)
-- **Item** (commodity characteristics)
-- **Production value**
+Without a structured approach, it’s easy to confuse:
+- scale vs composition,
+- dominance of a few crops vs broad structural differences.
 
-Here, the model is primarily an **interpretability engine**: it learns patterns that we then explain.
+## 3) The solution (what this project provides)
+This project builds a reproducible, explainable workflow using FAOSTAT production data to:
+- compare production composition across countries (Explore)
+- generate a structured estimate for any (Country, Item) pair (Predict)
+- explain estimates using SHAP contributions (Explain)
+- aggregate SHAP to quantify “Crop vs Country” influence (Insights)
 
-## 5) Why SHAP?
-SHAP explains predictions by decomposing them into additive contributions:
-- **Positive SHAP** pushes the estimate up
-- **Negative SHAP** pushes it down
+The emphasis is **interpretability and comparison**, not claiming real-world forecasting capability.
 
-This allows both:
-- **Local explanations**: why a specific (country, item) has a certain estimate
-- **Global/aggregated insights**: whether variation is mainly **crop-driven** or **country-driven**
+## 4) Theory (how to interpret the explainability)
+### 4.1 Why a model at all?
+The model acts as a structured way to learn patterns in the dataset, so that we can ask:
+- “What does the model attribute differences to, on average?”
+- “How strong is the role of crop vs country in the learned structure?”
 
-## 6) How to read the results in this dashboard
-- Explore: composition of production within a country, plus country-vs-country comparison
-- Predict + Explain: model estimate + SHAP waterfall + top contributors
-- Insights: aggregated SHAP magnitudes (strength of influence) and composition heatmap
+### 4.2 What SHAP represents (simple rule-set)
+SHAP decomposes each prediction into additive contributions:
+- Positive SHAP value → pushes the estimate upward
+- Negative SHAP value → pushes the estimate downward
+- Contributions sum back to the prediction (baseline + effects)
 
-## 7) Key findings (typical interpretation)
-- **Item effects** often dominate: crop choice strongly influences magnitude.
-- **Country effects** remain visible: structural differences shift production up/down.
-- The dashboard enables quantitative comparison of “how crop-driven vs country-driven” each country appears.
+### 4.3 Aggregated SHAP (the key comparison)
+We compute:
+- **avg_abs_item_effect**: how strongly crop choice typically shifts estimates up/down
+- **avg_abs_country_effect**: how strongly country context typically shifts estimates up/down
+
+Because we take absolute values, this measures **strength**, not direction.
+
+## 5) If I continue this project (planned next steps)
+To deepen analytical value, the next iteration would include:
+1. **Multi-year time series** to study trends and shocks (not only a snapshot).
+2. **Additional drivers** (if available): area harvested, yield, rainfall proxies, prices.
+3. **Better validation strategy**: country-aware splits and sensitivity checks.
+4. **Policy-style outputs**: short briefs, confidence ranges, and scenario comparisons.
+5. **More granular aggregation**: clustering countries by crop profiles, not only totals.
+
+These steps would transform the dashboard from a structural prototype into a richer analytical product.
     """)
 
+
 # =========================================================
-# Metrics row
+# Metrics row + interpretability
 # =========================================================
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Rows", f"{len(df)}")
@@ -163,29 +189,28 @@ c2.metric("MAE (tonnes)", f"{mae:,.0f}")
 c3.metric("Relative MAE", f"{relative_mae:.1f}%" if not np.isnan(relative_mae) else "NA")
 c4.metric("R²", f"{r2:.3f}")
 
-with st.expander("How to read these metrics", expanded=False):
+with st.expander("How to interpret MAE / Relative MAE / R²", expanded=False):
     st.markdown(f"""
-- **MAE (tonnes)**: average absolute error on the held-out test split.
-  If MAE is 200,000, the model is off by ~200k tonnes on average.
-
-- **Relative MAE (%)**: MAE scaled by the **median** production value.
-  Here it is **≈ {relative_mae:.1f}%** (median is used because production values are skewed).
-
-- **R²**: variance explained. With only (Country, Item) as features, R² can be modest because real drivers like
-  yield, harvested area, weather, and management are not included. That’s expected in this minimal case study.
+- **MAE (tonnes)** is the average absolute error on held-out test data.
+- **Relative MAE (%)** scales MAE by the median production value so the error is easier to interpret.
+  Here, Relative MAE ≈ **{relative_mae:.1f}%**.
+- **R²** can be modest because the model intentionally uses only (Country, Item) and does not include
+  real drivers like yield, harvested area, weather, management inputs, etc. This is expected for a minimal structural prototype.
     """)
+
 
 # =========================================================
 # Tabs
 # =========================================================
 tab1, tab2, tab3 = st.tabs(["Explore", "Predict + Explain", "Insights"])
 
+
 # ----------------------------
 # TAB 1: Explore
 # ----------------------------
 with tab1:
-    st.subheader("Explore country production patterns")
-    st.caption("Goal: understand production composition by item, then compare structures across countries.")
+    st.subheader("Explore")
+    st.caption("Compare production composition within a country and across countries (structure vs scale).")
 
     country = st.selectbox("Country", sorted(df["Country"].unique()))
     df_c = df[df["Country"] == country].copy()
@@ -206,7 +231,7 @@ with tab1:
         ["Total production (tonnes)", "Share of country total (%)"],
         horizontal=True
     )
-    use_log = st.checkbox("Use log scale (for tonnes)", value=False)
+    use_log = st.checkbox("Use log scale (only for tonnes)", value=False)
 
     top_items = (
         df_c.groupby("Item", as_index=False)["Value"]
@@ -233,10 +258,13 @@ with tab1:
         fig.update_yaxes(type="log")
 
     st.plotly_chart(fig, use_container_width=True)
-    st.caption(
-        "Interpretation: this bar chart shows the country’s production composition. "
-        "Use Share (%) to compare countries fairly even if total output differs."
-    )
+
+    with st.expander("How to read this chart", expanded=False):
+        st.markdown("""
+- **Tonnes** shows absolute magnitude (bigger countries/crops dominate).
+- **Share (%)** shows structure: which crops dominate within the country regardless of scale.
+Use Share (%) when comparing countries fairly.
+        """)
 
     st.download_button(
         " Download this country subset (CSV)",
@@ -246,8 +274,8 @@ with tab1:
     )
 
     st.divider()
-    st.subheader("Compare two countries (structure)")
-    st.caption("This comparison answers: do two countries differ mainly by scale, or by composition?")
+    st.subheader("Compare two countries")
+    st.caption("This answers: Are differences mainly scale-driven or composition-driven?")
 
     colA, colB = st.columns(2)
     countries_sorted = sorted(df["Country"].unique())
@@ -284,12 +312,19 @@ with tab1:
     )
     st.plotly_chart(fig_cmp, use_container_width=True)
 
+    with st.expander("How to interpret this comparison", expanded=False):
+        st.markdown("""
+- If the **Tonnes** chart differs a lot but the **Share (%)** chart looks similar, differences are mostly **scale**.
+- If the **Share (%)** chart differs strongly, differences are mainly **composition/structure**.
+        """)
+
+
 # ----------------------------
 # TAB 2: Predict + Explain
 # ----------------------------
 with tab2:
     st.subheader("Predict + Explain (SHAP)")
-    st.caption("Goal: explain one selected (Country, Item) estimate using SHAP contributions.")
+    st.caption("Pick a (Country, Item) pair to view an estimate and an explanation of what drove it.")
 
     cA, cB = st.columns(2)
     with cA:
@@ -305,9 +340,9 @@ with tab2:
 
     with st.expander("How to read the SHAP waterfall", expanded=False):
         st.markdown("""
-- The model starts from a **baseline** (average prediction over training data).
-- It then adds/subtracts contributions from features (Country_* and Item_*).
-- The final sum becomes the **predicted value**.
+- The model starts from a **baseline** (average prediction).
+- It then adds/subtracts contributions from the active features (Country_* and Item_*).
+- The final value is the estimate for your selected (Country, Item).
 
 Positive bars push the estimate up; negative bars push it down.
         """)
@@ -326,13 +361,10 @@ Positive bars push the estimate up; negative bars push it down.
     shap.waterfall_plot(exp, max_display=12, show=False)
     st.pyplot(plt.gcf(), clear_figure=True)
 
-    st.markdown("#### Top SHAP contributors (with direction)")
+    st.markdown("#### Top contributors (with direction)")
     top_idx = np.argsort(np.abs(shap_vals))[::-1][:15]
     contrib = pd.DataFrame(
-        {
-            "feature": np.array(names)[top_idx],
-            "shap_value": shap_vals[top_idx],
-        }
+        {"feature": np.array(names)[top_idx], "shap_value": shap_vals[top_idx]}
     )
     contrib["direction"] = np.where(contrib["shap_value"] >= 0, "↑ increases", "↓ decreases")
     contrib = contrib.sort_values(by="shap_value", ascending=False)
@@ -346,37 +378,43 @@ Positive bars push the estimate up; negative bars push it down.
         mime="text/csv",
     )
 
+
 # ----------------------------
 # TAB 3: Insights
 # ----------------------------
 with tab3:
-    st.subheader("Insights (aggregated explainability)")
-    st.caption("Goal: compare the strength of crop-driven vs country-driven effects across countries.")
+    st.subheader("Insights (Crop vs Country)")
+    st.caption("Aggregated SHAP compares how strong crop choice vs country context is, on average.")
 
-    with st.expander("What do these aggregated SHAP numbers mean?", expanded=True):
+    with st.expander("What do 'avg_abs_item_effect' and 'avg_abs_country_effect' mean?", expanded=True):
         st.markdown("""
-These metrics summarize SHAP values over a sample of rows:
+These metrics summarize SHAP values over a sample of rows.
 
 - **avg_abs_item_effect**: average absolute SHAP magnitude for Item_* features.
-  It answers: *how strongly crop choice typically moves production estimates up/down?*
+  It answers: *how strongly crop choice typically moves estimates up/down?*
 
 - **avg_abs_country_effect**: average absolute SHAP magnitude for Country_* features.
-  It answers: *how strongly country context typically shifts production estimates up/down?*
+  It answers: *how strongly country context typically shifts estimates up/down?*
 
 Because we take **absolute values**, this measures **strength of influence**, not direction.
 
  Interpretation:
-- If **avg_abs_item_effect > avg_abs_country_effect**, differences are mostly **crop-driven**.
-- If **avg_abs_country_effect is high**, the **country context** has a stronger structural role.
+- If **avg_abs_item_effect > avg_abs_country_effect**, variation is mainly **crop-driven**.
+- If **avg_abs_country_effect is high**, **country context** plays a stronger structural role.
         """)
 
-    st.markdown("### A) Crop vs Country: aggregated SHAP comparison")
-
-    sample_n = st.slider("Sample size used for aggregated SHAP (trade-off: speed vs stability)", 20, min(160, len(X_test)), min(80, len(X_test)))
+    st.markdown("### A) Aggregated SHAP strength comparison")
+    sample_n = st.slider(
+        "Sample size for aggregated SHAP (speed vs stability)",
+        20,
+        min(200, len(X_test)),
+        min(80, len(X_test)),
+    )
     X_sample = X_test.sample(sample_n, random_state=42)
 
     X_trans, names = transform_with_names(pipeline, X_sample)
     shap_matrix = explainer.shap_values(X_trans, check_additivity=False)
+
     shap_df = pd.DataFrame(shap_matrix, columns=names)
     shap_df["Country"] = X_sample["Country"].values
 
@@ -402,7 +440,7 @@ Because we take **absolute values**, this measures **strength of influence**, no
 
     metric = st.selectbox(
         "Choose what to plot",
-        ["avg_abs_item_effect", "avg_abs_country_effect", "item_to_country_ratio"]
+        ["avg_abs_item_effect", "avg_abs_country_effect", "item_to_country_ratio"],
     )
 
     fig_metric = px.bar(
@@ -413,15 +451,14 @@ Because we take **absolute values**, this measures **strength of influence**, no
     )
     st.plotly_chart(fig_metric, use_container_width=True)
 
-    st.caption(
-        "Tip: **item_to_country_ratio > 1** means item effects dominate; **< 1** means country effects dominate."
-    )
+    st.caption("Tip: ratio > 1 ⇒ crop effects dominate; ratio < 1 ⇒ country context dominates.")
 
     st.divider()
-    st.markdown("### B) Cross-country composition: top items heatmap")
-    st.caption("This section compares which items dominate total production across the four countries.")
+    st.markdown("### B) Cross-country composition heatmap (Top items)")
+    st.caption("Compare which items dominate across countries. Switch between Tonnes and within-country share.")
 
     top_k = st.slider("How many top items to include", 10, 40, 20)
+
     top_items_global = (
         df.groupby("Item", as_index=False)["Value"]
         .sum()
@@ -455,9 +492,23 @@ Because we take **absolute values**, this measures **strength of influence**, no
     except Exception:
         st.info("Heatmap rendering skipped (table above is available).")
 
-    with st.expander("How to interpret this heatmap", expanded=False):
+    with st.expander("How to read this heatmap", expanded=False):
         st.markdown("""
-- In **Tonnes** mode, you see absolute magnitude (big producers dominate visually).
-- In **Share (%)** mode, you see structure: which crops make up a larger fraction of a country’s total.
-This helps separate “big because total is big” from “big because composition is different”.
-""")
+- **Tonnes** highlights absolute scale (large producers dominate visually).
+- **Share (%)** highlights structure: which crops matter *within* each country.
+Use Share (%) to avoid confusing scale with composition.
+        """)
+
+    st.divider()
+    st.subheader("Roadmap: what would be improved next")
+    st.markdown("""
+If this project is extended, the next steps would focus on turning this prototype into a richer analytical system:
+
+- **Multi-year panel** (add trends, shocks, and seasonal narratives)
+- **Add drivers** (area harvested, yields, trade, rainfall proxies)
+- **Robust validation** (country-aware splits + sensitivity analysis)
+- **Clustering** (group countries by crop profiles, not only totals)
+- **Policy deliverables** (short briefs, confidence bands, scenario comparisons)
+
+This roadmap is intentionally included to reflect how the project could evolve into a deeper FAO-style analytical product.
+    """)
