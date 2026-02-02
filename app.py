@@ -1,514 +1,464 @@
+import io
+import time
 import numpy as np
 import pandas as pd
 import streamlit as st
-import plotly.express as px
-import shap
-import matplotlib.pyplot as plt
 
 from sklearn.model_selection import train_test_split
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import mean_absolute_error, r2_score
+from sklearn.impute import SimpleImputer
+from sklearn.metrics import (
+    r2_score, mean_absolute_error, mean_squared_error,
+    accuracy_score, f1_score, roc_auc_score
+)
+from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
+
+import shap
+import matplotlib.pyplot as plt
+
+try:
+    import joblib
+except Exception:
+    joblib = None
 
 
-# =========================================================
-# Page config
-# =========================================================
-st.set_page_config(page_title="FAOSTAT XAI Case Study", layout="wide")
+# ----------------------------
+# Page setup
+# ----------------------------
+st.set_page_config(
+    page_title="FAO SHAP Dashboard",
+    layout="wide",
+)
+
+st.title(" FAO SHAP Dashboard")
+st.caption("Upload data, train a baseline model, and explain predictions with SHAP (fast + Streamlit-friendly).")
 
 
-# =========================================================
-# Data
-# =========================================================
-@st.cache_data
-def load_data():
-    def load_country(path: str, country: str) -> pd.DataFrame:
-        df = pd.read_csv(path)
-        df["Country"] = country
-        return df
+# ----------------------------
+# Helpers
+# ----------------------------
+def _is_classification_target(y: pd.Series) -> bool:
+    # Heuristic: few unique values => classification
+    nunique = y.dropna().nunique()
+    if y.dtype == "object" or y.dtype.name == "category":
+        return True
+    # If numeric but small unique count, likely classification
+    return nunique <= 20
 
-    df = pd.concat(
-        [
-            load_country("data/italy.csv", "Italy"),
-            load_country("data/france.csv", "France"),
-            load_country("data/germany.csv", "Germany"),
-            load_country("data/spain.csv", "Spain"),
+
+def _build_preprocessor(X: pd.DataFrame) -> ColumnTransformer:
+    num_cols = X.select_dtypes(include=[np.number]).columns.tolist()
+    cat_cols = [c for c in X.columns if c not in num_cols]
+
+    numeric_transformer = Pipeline(steps=[
+        ("imputer", SimpleImputer(strategy="median")),
+    ])
+
+    categorical_transformer = Pipeline(steps=[
+        ("imputer", SimpleImputer(strategy="most_frequent")),
+        ("onehot", OneHotEncoder(handle_unknown="ignore", sparse_output=False)),
+    ])
+
+    return ColumnTransformer(
+        transformers=[
+            ("num", numeric_transformer, num_cols),
+            ("cat", categorical_transformer, cat_cols),
         ],
-        ignore_index=True,
+        remainder="drop",
+        verbose_feature_names_out=False,
     )
 
-    # Minimal columns for this study
-    df["Value"] = pd.to_numeric(df["Value"], errors="coerce")
-    df = df.dropna(subset=["Value"])
-    df = df[["Country", "Item", "Value"]].copy()
 
-    df["Country"] = df["Country"].astype(str)
-    df["Item"] = df["Item"].astype(str)
-
-    return df
-
-
-df = load_data()
-FEATURES = ["Country", "Item"]
-TARGET = "Value"
+def _get_feature_names(preprocessor: ColumnTransformer, X: pd.DataFrame):
+    # Works with sklearn >= 1.0
+    try:
+        return preprocessor.get_feature_names_out()
+    except Exception:
+        # Fallback: not perfect, but prevents crash
+        return np.array([f"f{i}" for i in range(X.shape[1])])
 
 
-# =========================================================
-# Model training
-# =========================================================
-@st.cache_resource
-def train_model(df: pd.DataFrame):
-    X = df[FEATURES]
-    y = df[TARGET]
+def _metric_block_regression(y_true, y_pred):
+    rmse = np.sqrt(mean_squared_error(y_true, y_pred))
+    c1, c2, c3 = st.columns(3)
+    c1.metric("R²", f"{r2_score(y_true, y_pred):.4f}")
+    c2.metric("MAE", f"{mean_absolute_error(y_true, y_pred):.4f}")
+    c3.metric("RMSE", f"{rmse:.4f}")
+
+
+def _metric_block_classification(y_true, y_pred, y_proba=None):
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Accuracy", f"{accuracy_score(y_true, y_pred):.4f}")
+    c2.metric("F1 (weighted)", f"{f1_score(y_true, y_pred, average='weighted'):.4f}")
+
+    # ROC AUC only valid for binary (or multi with ovR, but keep it simple)
+    auc_text = "N/A"
+    if y_proba is not None:
+        try:
+            # binary case expected: proba for positive class
+            if y_proba.ndim == 1:
+                auc_text = f"{roc_auc_score(y_true, y_proba):.4f}"
+            elif y_proba.ndim == 2 and y_proba.shape[1] == 2:
+                auc_text = f"{roc_auc_score(y_true, y_proba[:, 1]):.4f}"
+        except Exception:
+            pass
+    c3.metric("ROC AUC", auc_text)
+
+
+@st.cache_data(show_spinner=False)
+def _load_csv(file_bytes: bytes) -> pd.DataFrame:
+    return pd.read_csv(io.BytesIO(file_bytes))
+
+
+@st.cache_resource(show_spinner=False)
+def _train_pipeline(df: pd.DataFrame, target_col: str, task: str, test_size: float, random_state: int, n_estimators: int):
+    X = df.drop(columns=[target_col])
+    y = df[target_col]
+
+    # basic cleaning
+    X = X.copy()
+    y = y.copy()
+
+    preprocessor = _build_preprocessor(X)
+
+    if task == "regression":
+        model = RandomForestRegressor(
+            n_estimators=n_estimators,
+            random_state=random_state,
+            n_jobs=-1
+        )
+    else:
+        model = RandomForestClassifier(
+            n_estimators=n_estimators,
+            random_state=random_state,
+            n_jobs=-1
+        )
+
+    pipe = Pipeline(steps=[
+        ("preprocess", preprocessor),
+        ("model", model)
+    ])
 
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.25, random_state=42
+        X, y,
+        test_size=test_size,
+        random_state=random_state,
+        stratify=y if task == "classification" else None
     )
 
-    preprocessor = ColumnTransformer(
-        [("cat", OneHotEncoder(handle_unknown="ignore"), FEATURES)]
-    )
+    pipe.fit(X_train, y_train)
 
-    model = RandomForestRegressor(
-        n_estimators=140,
-        max_depth=14,
-        random_state=42,
-        n_jobs=-1,
-    )
-
-    pipeline = Pipeline([("preprocess", preprocessor), ("model", model)])
-    pipeline.fit(X_train, y_train)
-
-    preds = pipeline.predict(X_test)
-    mae = mean_absolute_error(y_test, preds)
-    r2 = r2_score(y_test, preds)
-
-    return pipeline, X_train, X_test, y_train, y_test, mae, r2
+    return pipe, X_train, X_test, y_train, y_test
 
 
-pipeline, X_train, X_test, y_train, y_test, mae, r2 = train_model(df)
-
-median_value = float(df["Value"].median()) if len(df) else np.nan
-relative_mae = (mae / median_value) * 100 if median_value and not np.isnan(median_value) else np.nan
-
-
-# =========================================================
-# SHAP explainer
-# IMPORTANT: do NOT cache a function that takes 'pipeline' as param
-# =========================================================
-rf_model = pipeline.named_steps["model"]
-explainer = shap.TreeExplainer(rf_model)
+def _safe_sample(X: pd.DataFrame, max_rows: int, random_state: int) -> pd.DataFrame:
+    if len(X) <= max_rows:
+        return X
+    return X.sample(max_rows, random_state=random_state)
 
 
-def transform_with_names(pipeline: Pipeline, X: pd.DataFrame):
-    pre = pipeline.named_steps["preprocess"]
-    X_trans = pre.transform(X).toarray()
-    names = pre.named_transformers_["cat"].get_feature_names_out(FEATURES)
-    return X_trans, names
+def _compute_shap_for_tree_model(pipe: Pipeline, X_background: pd.DataFrame, X_explain: pd.DataFrame):
+    """
+    Computes SHAP values for tree-based model inside a sklearn Pipeline.
+    Returns: feature_names, shap_values, X_explain_transformed
+    """
+    pre = pipe.named_steps["preprocess"]
+    model = pipe.named_steps["model"]
+
+    # transform
+    Xb = pre.transform(X_background)
+    Xe = pre.transform(X_explain)
+    feature_names = _get_feature_names(pre, X_explain)
+
+    explainer = shap.TreeExplainer(model)
+    shap_values = explainer.shap_values(Xe)
+
+    return feature_names, shap_values, Xe
 
 
-# =========================================================
-# Header
-# =========================================================
-st.title(" FAOSTAT Explainable ML Dashboard (Case Study)")
-st.caption("Italy • France • Germany • Spain | Explainable ML + Interactive Comparison")
+def _plot_shap_summary(feature_names, shap_values, X_transformed, max_display=20, plot_type="bar"):
+    """
+    Handles both regression and classification SHAP shapes.
+    """
+    fig = plt.figure(figsize=(10, 6))
 
-
-# =========================================================
-# Narrative block: Motivation -> Problem -> Solution -> Theory -> Next steps
-# (More detailed, structured, and intentionally not '100% complete')
-# =========================================================
-with st.expander(" Case Study Narrative (Motivation → Problem → Solution → Theory → Next steps)", expanded=True):
-    st.markdown("""
-## 1) Motivation (why this matters)
-In international agricultural analysis, decision-makers often need to compare countries transparently:
-- What is different across countries?
-- Which crops dominate production?
-- Are observed differences primarily about crop composition or broader structural context?
-
-In many practical settings, the objective is not purely forecasting, but **interpretable comparison** and **clear communication**.
-
-## 2) The issue (the analytical gap)
-Simple totals and rankings tell *what* is produced, but not *why* differences occur.  
-A common gap is separating two intertwined drivers:
-- **Item effects**: “This country looks high because it produces high-volume crops.”
-- **Country effects**: “This country looks high because country context amplifies output (structure, geography, systems).”
-
-Without a structured approach, it’s easy to confuse:
-- scale vs composition,
-- dominance of a few crops vs broad structural differences.
-
-## 3) The solution (what this project provides)
-This project builds a reproducible, explainable workflow using FAOSTAT production data to:
-- compare production composition across countries (Explore)
-- generate a structured estimate for any (Country, Item) pair (Predict)
-- explain estimates using SHAP contributions (Explain)
-- aggregate SHAP to quantify “Crop vs Country” influence (Insights)
-
-The emphasis is **interpretability and comparison**, not claiming real-world forecasting capability.
-
-## 4) Theory (how to interpret the explainability)
-### 4.1 Why a model at all?
-The model acts as a structured way to learn patterns in the dataset, so that we can ask:
-- “What does the model attribute differences to, on average?”
-- “How strong is the role of crop vs country in the learned structure?”
-
-### 4.2 What SHAP represents (simple rule-set)
-SHAP decomposes each prediction into additive contributions:
-- Positive SHAP value → pushes the estimate upward
-- Negative SHAP value → pushes the estimate downward
-- Contributions sum back to the prediction (baseline + effects)
-
-### 4.3 Aggregated SHAP (the key comparison)
-We compute:
-- **avg_abs_item_effect**: how strongly crop choice typically shifts estimates up/down
-- **avg_abs_country_effect**: how strongly country context typically shifts estimates up/down
-
-Because we take absolute values, this measures **strength**, not direction.
-
-## 5) If I continue this project (planned next steps)
-To deepen analytical value, the next iteration would include:
-1. **Multi-year time series** to study trends and shocks (not only a snapshot).
-2. **Additional drivers** (if available): area harvested, yield, rainfall proxies, prices.
-3. **Better validation strategy**: country-aware splits and sensitivity checks.
-4. **Policy-style outputs**: short briefs, confidence ranges, and scenario comparisons.
-5. **More granular aggregation**: clustering countries by crop profiles, not only totals.
-
-These steps would transform the dashboard from a structural prototype into a richer analytical product.
-    """)
-
-
-# =========================================================
-# Metrics row + interpretability
-# =========================================================
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Rows", f"{len(df)}")
-c2.metric("MAE (tonnes)", f"{mae:,.0f}")
-c3.metric("Relative MAE", f"{relative_mae:.1f}%" if not np.isnan(relative_mae) else "NA")
-c4.metric("R²", f"{r2:.3f}")
-
-with st.expander("How to interpret MAE / Relative MAE / R²", expanded=False):
-    st.markdown(f"""
-- **MAE (tonnes)** is the average absolute error on held-out test data.
-- **Relative MAE (%)** scales MAE by the median production value so the error is easier to interpret.
-  Here, Relative MAE ≈ **{relative_mae:.1f}%**.
-- **R²** can be modest because the model intentionally uses only (Country, Item) and does not include
-  real drivers like yield, harvested area, weather, management inputs, etc. This is expected for a minimal structural prototype.
-    """)
-
-
-# =========================================================
-# Tabs
-# =========================================================
-tab1, tab2, tab3 = st.tabs(["Explore", "Predict + Explain", "Insights"])
-
-
-# ----------------------------
-# TAB 1: Explore
-# ----------------------------
-with tab1:
-    st.subheader("Explore")
-    st.caption("Compare production composition within a country and across countries (structure vs scale).")
-
-    country = st.selectbox("Country", sorted(df["Country"].unique()))
-    df_c = df[df["Country"] == country].copy()
-
-    left, right = st.columns([2, 1])
-    with left:
-        st.dataframe(df_c.sort_values("Value", ascending=False).head(30), use_container_width=True)
-    with right:
-        st.markdown("#### Quick stats")
-        st.write(f"Items: **{df_c['Item'].nunique()}**")
-        st.write(f"Total production: **{df_c['Value'].sum():,.0f} t**")
-        st.write(f"Median item production: **{df_c['Value'].median():,.0f} t**")
-
-    topn = st.slider("Top-N items", 5, 30, 10)
-
-    view_mode = st.radio(
-        "Bar chart view",
-        ["Total production (tonnes)", "Share of country total (%)"],
-        horizontal=True
-    )
-    use_log = st.checkbox("Use log scale (only for tonnes)", value=False)
-
-    top_items = (
-        df_c.groupby("Item", as_index=False)["Value"]
-        .sum()
-        .sort_values("Value", ascending=False)
-        .head(topn)
-    )
-
-    if view_mode == "Share of country total (%)":
-        denom = df_c["Value"].sum()
-        top_items["Value"] = (top_items["Value"] / denom) * 100 if denom else 0
-        y_label = "Share (%)"
+    # Classification can return list (one array per class)
+    if isinstance(shap_values, list):
+        # Pick class 1 if binary, else pick the class with largest mean |SHAP|
+        if len(shap_values) == 2:
+            sv = shap_values[1]
+            title_suffix = " (class 1)"
+        else:
+            means = [np.mean(np.abs(sv)) for sv in shap_values]
+            idx = int(np.argmax(means))
+            sv = shap_values[idx]
+            title_suffix = f" (class {idx})"
     else:
-        y_label = "Tonnes"
+        sv = shap_values
+        title_suffix = ""
 
-    fig = px.bar(
-        top_items,
-        x="Item",
-        y="Value",
-        title=f"{country}: Top {topn} items",
-        labels={"Value": y_label}
+    shap.summary_plot(
+        sv,
+        features=X_transformed,
+        feature_names=feature_names,
+        plot_type=plot_type,
+        max_display=max_display,
+        show=False
     )
-    if use_log and view_mode == "Total production (tonnes)":
-        fig.update_yaxes(type="log")
+    plt.title(f"SHAP Summary{title_suffix}")
+    plt.tight_layout()
+    return fig
 
-    st.plotly_chart(fig, use_container_width=True)
 
-    with st.expander("How to read this chart", expanded=False):
-        st.markdown("""
-- **Tonnes** shows absolute magnitude (bigger countries/crops dominate).
-- **Share (%)** shows structure: which crops dominate within the country regardless of scale.
-Use Share (%) when comparing countries fairly.
-        """)
+# ----------------------------
+# Sidebar controls
+# ----------------------------
+with st.sidebar:
+    st.header(" Controls")
 
-    st.download_button(
-        " Download this country subset (CSV)",
-        df_c.to_csv(index=False).encode("utf-8"),
-        file_name=f"{country}_data.csv",
-        mime="text/csv",
-    )
+    st.markdown("### 1) Load data")
+    uploaded_csv = st.file_uploader("Upload CSV", type=["csv"])
+
+    st.markdown("### 2) Optional: Load a saved model")
+    st.caption("If you already trained a pipeline and saved it with joblib, you can load it here.")
+    uploaded_model = st.file_uploader("Upload model (.pkl/.joblib)", type=["pkl", "joblib"])
 
     st.divider()
-    st.subheader("Compare two countries")
-    st.caption("This answers: Are differences mainly scale-driven or composition-driven?")
 
-    colA, colB = st.columns(2)
-    countries_sorted = sorted(df["Country"].unique())
-    with colA:
-        cA = st.selectbox("Country A", countries_sorted, index=0, key="cA")
-    with colB:
-        cB = st.selectbox("Country B", countries_sorted, index=1 if len(countries_sorted) > 1 else 0, key="cB")
-
-    dfA = df[df["Country"] == cA].groupby("Item", as_index=False)["Value"].sum()
-    dfB = df[df["Country"] == cB].groupby("Item", as_index=False)["Value"].sum()
-
-    top_global = (
-        pd.concat([dfA, dfB])
-        .groupby("Item", as_index=False)["Value"].sum()
-        .sort_values("Value", ascending=False)
-        .head(15)["Item"]
-    )
-
-    dfA2 = dfA[dfA["Item"].isin(top_global)].assign(Country=cA)
-    dfB2 = dfB[dfB["Item"].isin(top_global)].assign(Country=cB)
-    cmp = pd.concat([dfA2, dfB2], ignore_index=True)
-
-    cmp_mode = st.radio("Compare as", ["Tonnes", "Share (%)"], horizontal=True, key="cmp_mode")
-    if cmp_mode == "Share (%)":
-        cmp["Value"] = cmp.groupby("Country")["Value"].transform(lambda s: (s / s.sum() * 100) if s.sum() else 0)
-
-    fig_cmp = px.bar(
-        cmp,
-        x="Item",
-        y="Value",
-        color="Country",
-        barmode="group",
-        title=f"{cA} vs {cB}: Top items comparison"
-    )
-    st.plotly_chart(fig_cmp, use_container_width=True)
-
-    with st.expander("How to interpret this comparison", expanded=False):
-        st.markdown("""
-- If the **Tonnes** chart differs a lot but the **Share (%)** chart looks similar, differences are mostly **scale**.
-- If the **Share (%)** chart differs strongly, differences are mainly **composition/structure**.
-        """)
-
-
-# ----------------------------
-# TAB 2: Predict + Explain
-# ----------------------------
-with tab2:
-    st.subheader("Predict + Explain (SHAP)")
-    st.caption("Pick a (Country, Item) pair to view an estimate and an explanation of what drove it.")
-
-    cA, cB = st.columns(2)
-    with cA:
-        sel_country = st.selectbox("Country", sorted(df["Country"].unique()), key="p_country")
-    with cB:
-        items_for_country = sorted(df[df["Country"] == sel_country]["Item"].unique())
-        sel_item = st.selectbox("Item", items_for_country, key="p_item")
-
-    row = pd.DataFrame([{"Country": sel_country, "Item": sel_item}])
-    pred = float(pipeline.predict(row)[0])
-
-    st.metric("Model estimate (tonnes)", f"{pred:,.0f}")
-
-    with st.expander("How to read the SHAP waterfall", expanded=False):
-        st.markdown("""
-- The model starts from a **baseline** (average prediction).
-- It then adds/subtracts contributions from the active features (Country_* and Item_*).
-- The final value is the estimate for your selected (Country, Item).
-
-Positive bars push the estimate up; negative bars push it down.
-        """)
-
-    X_trans, names = transform_with_names(pipeline, row)
-    shap_vals = explainer.shap_values(X_trans, check_additivity=False)[0]
-
-    exp = shap.Explanation(
-        values=shap_vals,
-        base_values=explainer.expected_value,
-        feature_names=names,
-    )
-
-    st.markdown("#### SHAP explanation (waterfall)")
-    plt.figure()
-    shap.waterfall_plot(exp, max_display=12, show=False)
-    st.pyplot(plt.gcf(), clear_figure=True)
-
-    st.markdown("#### Top contributors (with direction)")
-    top_idx = np.argsort(np.abs(shap_vals))[::-1][:15]
-    contrib = pd.DataFrame(
-        {"feature": np.array(names)[top_idx], "shap_value": shap_vals[top_idx]}
-    )
-    contrib["direction"] = np.where(contrib["shap_value"] >= 0, "↑ increases", "↓ decreases")
-    contrib = contrib.sort_values(by="shap_value", ascending=False)
-
-    st.dataframe(contrib, use_container_width=True)
-
-    st.download_button(
-        " Download SHAP contributors (CSV)",
-        contrib.to_csv(index=False).encode("utf-8"),
-        file_name=f"shap_contrib_{sel_country}_{sel_item}.csv".replace(" ", "_"),
-        mime="text/csv",
-    )
-
-
-# ----------------------------
-# TAB 3: Insights
-# ----------------------------
-with tab3:
-    st.subheader("Insights (Crop vs Country)")
-    st.caption("Aggregated SHAP compares how strong crop choice vs country context is, on average.")
-
-    with st.expander("What do 'avg_abs_item_effect' and 'avg_abs_country_effect' mean?", expanded=True):
-        st.markdown("""
-These metrics summarize SHAP values over a sample of rows.
-
-- **avg_abs_item_effect**: average absolute SHAP magnitude for Item_* features.
-  It answers: *how strongly crop choice typically moves estimates up/down?*
-
-- **avg_abs_country_effect**: average absolute SHAP magnitude for Country_* features.
-  It answers: *how strongly country context typically shifts estimates up/down?*
-
-Because we take **absolute values**, this measures **strength of influence**, not direction.
-
- Interpretation:
-- If **avg_abs_item_effect > avg_abs_country_effect**, variation is mainly **crop-driven**.
-- If **avg_abs_country_effect is high**, **country context** plays a stronger structural role.
-        """)
-
-    st.markdown("### A) Aggregated SHAP strength comparison")
-    sample_n = st.slider(
-        "Sample size for aggregated SHAP (speed vs stability)",
-        20,
-        min(200, len(X_test)),
-        min(80, len(X_test)),
-    )
-    X_sample = X_test.sample(sample_n, random_state=42)
-
-    X_trans, names = transform_with_names(pipeline, X_sample)
-    shap_matrix = explainer.shap_values(X_trans, check_additivity=False)
-
-    shap_df = pd.DataFrame(shap_matrix, columns=names)
-    shap_df["Country"] = X_sample["Country"].values
-
-    country_cols = [c for c in names if c.startswith("Country_")]
-    item_cols = [c for c in names if c.startswith("Item_")]
-
-    summary = (
-        shap_df.groupby("Country")
-        .apply(
-            lambda g: pd.Series(
-                {
-                    "avg_abs_country_effect": g[country_cols].abs().mean().mean() if country_cols else 0.0,
-                    "avg_abs_item_effect": g[item_cols].abs().mean().mean() if item_cols else 0.0,
-                }
-            )
-        )
-        .reset_index()
-    )
-    summary["item_to_country_ratio"] = summary["avg_abs_item_effect"] / (summary["avg_abs_country_effect"] + 1e-9)
-    summary = summary.sort_values("item_to_country_ratio", ascending=False)
-
-    st.dataframe(summary, use_container_width=True)
-
-    metric = st.selectbox(
-        "Choose what to plot",
-        ["avg_abs_item_effect", "avg_abs_country_effect", "item_to_country_ratio"],
-    )
-
-    fig_metric = px.bar(
-        summary.sort_values(metric, ascending=False),
-        x="Country",
-        y=metric,
-        title=f"Country comparison: {metric}",
-    )
-    st.plotly_chart(fig_metric, use_container_width=True)
-
-    st.caption("Tip: ratio > 1 ⇒ crop effects dominate; ratio < 1 ⇒ country context dominates.")
+    st.markdown("### 3) Training / evaluation")
+    test_size = st.slider("Test size", 0.1, 0.4, 0.2, 0.05)
+    random_state = st.number_input("Random seed", min_value=0, max_value=999999, value=42, step=1)
+    n_estimators = st.slider("RandomForest trees", 50, 500, 200, 50)
 
     st.divider()
-    st.markdown("### B) Cross-country composition heatmap (Top items)")
-    st.caption("Compare which items dominate across countries. Switch between Tonnes and within-country share.")
 
-    top_k = st.slider("How many top items to include", 10, 40, 20)
+    st.markdown("### 4) SHAP compute")
+    shap_rows = st.slider("Rows to explain (sampling)", 50, 2000, 400, 50)
+    shap_bg_rows = st.slider("Background rows (sampling)", 50, 2000, 200, 50)
+    max_display = st.slider("Max features to display", 5, 40, 20, 1)
 
-    top_items_global = (
-        df.groupby("Item", as_index=False)["Value"]
-        .sum()
-        .sort_values("Value", ascending=False)
-        .head(top_k)["Item"]
-        .tolist()
+    st.divider()
+
+    st.markdown("### 5) Roadmap text")
+    st.caption("This shows up inside the app as a clean 'next steps' section.")
+    roadmap_focus = st.selectbox(
+        "Focus area",
+        ["Data pipeline", "Modeling", "Explainability", "Deployment", "Monitoring"],
+        index=0
     )
 
-    heat = (
-        df[df["Item"].isin(top_items_global)]
-        .groupby(["Item", "Country"], as_index=False)["Value"]
-        .sum()
-    )
-    pivot = heat.pivot(index="Item", columns="Country", values="Value").fillna(0)
 
-    view = st.radio("Heatmap values", ["Tonnes", "Share within country (%)"], horizontal=True)
-    pivot_view = pivot.copy()
-    if view == "Share within country (%)":
-        pivot_view = pivot_view.div(pivot_view.sum(axis=0).replace(0, np.nan), axis=1) * 100
-        pivot_view = pivot_view.fillna(0)
+# ----------------------------
+# Main logic
+# ----------------------------
+if not uploaded_csv and not uploaded_model:
+    st.info("Upload a CSV to begin (or upload a saved model pipeline).")
+    st.stop()
 
-    st.dataframe(pivot_view, use_container_width=True)
+df = None
+pipe = None
+X_train = X_test = y_train = y_test = None
 
+# Load CSV if present
+if uploaded_csv:
     try:
-        fig_h = px.imshow(
-            pivot_view,
-            aspect="auto",
-            title=f"Top {top_k} items: {view}",
-        )
-        st.plotly_chart(fig_h, use_container_width=True)
-    except Exception:
-        st.info("Heatmap rendering skipped (table above is available).")
+        df = _load_csv(uploaded_csv.getvalue())
+    except Exception as e:
+        st.error(f"Could not read CSV: {e}")
+        st.stop()
 
-    with st.expander("How to read this heatmap", expanded=False):
-        st.markdown("""
-- **Tonnes** highlights absolute scale (large producers dominate visually).
-- **Share (%)** highlights structure: which crops matter *within* each country.
-Use Share (%) to avoid confusing scale with composition.
-        """)
+    st.subheader(" Data preview")
+    st.dataframe(df.head(30), use_container_width=True)
 
-    st.divider()
-    st.subheader("Roadmap: what would be improved next")
-    st.markdown("""
-If this project is extended, the next steps would focus on turning this prototype into a richer analytical system:
+    if df.shape[1] < 2:
+        st.error("Your dataset needs at least 2 columns (features + target).")
+        st.stop()
 
-- **Multi-year panel** (add trends, shocks, and seasonal narratives)
-- **Add drivers** (area harvested, yields, trade, rainfall proxies)
-- **Robust validation** (country-aware splits + sensitivity analysis)
-- **Clustering** (group countries by crop profiles, not only totals)
-- **Policy deliverables** (short briefs, confidence bands, scenario comparisons)
+    target_col = st.selectbox("Select target column", df.columns.tolist(), index=len(df.columns) - 1)
 
-This roadmap is intentionally included to reflect how the project could evolve into a deeper FAO-style analytical product.
-    """)
+    y = df[target_col]
+    suggested_task = "classification" if _is_classification_target(y) else "regression"
+    task = st.radio("Task", ["regression", "classification"], index=0 if suggested_task == "regression" else 1)
+
+    st.write("")
+
+    # Train pipeline
+    with st.spinner("Training model..."):
+        try:
+            pipe, X_train, X_test, y_train, y_test = _train_pipeline(
+                df=df,
+                target_col=target_col,
+                task=task,
+                test_size=test_size,
+                random_state=random_state,
+                n_estimators=n_estimators
+            )
+        except Exception as e:
+            st.error("Training failed. Common causes: non-numeric target for regression, empty columns, or mixed types.")
+            st.exception(e)
+            st.stop()
+
+    st.success("Model trained ")
+
+    # Evaluate
+    st.subheader("📈 Model performance")
+    try:
+        y_pred = pipe.predict(X_test)
+
+        if task == "regression":
+            _metric_block_regression(y_test, y_pred)
+        else:
+            # Predict probabilities if available
+            y_proba = None
+            try:
+                y_proba = pipe.predict_proba(X_test)
+            except Exception:
+                pass
+            _metric_block_classification(y_test, y_pred, y_proba=y_proba)
+
+    except Exception as e:
+        st.error(f"Evaluation failed: {e}")
+        st.stop()
+
+    # Offer download of trained model
+    if joblib is not None:
+        st.subheader(" Save this model")
+        buf = io.BytesIO()
+        try:
+            joblib.dump(pipe, buf)
+            st.download_button(
+                "Download trained pipeline (.joblib)",
+                data=buf.getvalue(),
+                file_name="trained_pipeline.joblib",
+                mime="application/octet-stream"
+            )
+        except Exception:
+            st.caption("Model download not available in this environment.")
+    else:
+        st.caption("joblib not available; skipping model download.")
+
+elif uploaded_model:
+    if joblib is None:
+        st.error("joblib is not available, so the model cannot be loaded here.")
+        st.stop()
+    try:
+        pipe = joblib.load(io.BytesIO(uploaded_model.getvalue()))
+        st.success("Loaded model pipeline ")
+        st.info("Upload a CSV too if you want SHAP explanations, since SHAP needs data to explain.")
+    except Exception as e:
+        st.error(f"Could not load model: {e}")
+        st.stop()
+
+
+# ----------------------------
+# SHAP Section
+# ----------------------------
+st.divider()
+st.subheader(" SHAP explainability")
+
+if pipe is None:
+    st.info("Train or load a model pipeline to compute SHAP.")
+    st.stop()
+
+if df is None:
+    st.info("Upload a CSV so the app has data to explain with SHAP.")
+    st.stop()
+
+# Re-derive X/y for explaining if we trained above
+target_col_infer = None
+if "Select target column" in st.session_state:
+    # Streamlit doesn't store that label; we rely on actual df usage above.
+    pass
+
+# If user trained in this run, we already have X_train/X_test
+if X_train is None or X_test is None:
+    st.warning("Model was loaded, not trained here. Please re-upload data and re-train (recommended) for consistent preprocessing.")
+    st.stop()
+
+X_bg = _safe_sample(X_train, shap_bg_rows, random_state)
+X_exp = _safe_sample(X_test, shap_rows, random_state)
+
+c1, c2 = st.columns([1, 1])
+c1.write(f"**Background rows:** {len(X_bg)}")
+c2.write(f"**Explained rows:** {len(X_exp)}")
+
+with st.spinner("Computing SHAP values (tree explainer)..."):
+    t0 = time.time()
+    try:
+        feature_names, shap_values, X_exp_transformed = _compute_shap_for_tree_model(pipe, X_bg, X_exp)
+        elapsed = time.time() - t0
+        st.success(f"SHAP computed  ({elapsed:.2f}s)")
+    except Exception as e:
+        st.error("SHAP computation failed. If your model isn't tree-based, TreeExplainer may not work.")
+        st.exception(e)
+        st.stop()
+
+tab1, tab2 = st.tabs(["Summary (bar)", "Summary (beeswarm)"])
+
+with tab1:
+    fig = _plot_shap_summary(feature_names, shap_values, X_exp_transformed, max_display=max_display, plot_type="bar")
+    st.pyplot(fig, clear_figure=True)
+
+with tab2:
+    fig = _plot_shap_summary(feature_names, shap_values, X_exp_transformed, max_display=max_display, plot_type="dot")
+    st.pyplot(fig, clear_figure=True)
+
+
+# ----------------------------
+# “Future phase” text (better framed)
+# ----------------------------
+st.divider()
+st.subheader(" What I’ll build next (future phase)")
+
+roadmap_map = {
+    "Data pipeline": [
+        "Add a data validation layer (schema checks, missing-value reports, outlier flags).",
+        "Automate ingestion (scheduled pulls or API connectors), so uploads become optional.",
+        "Version datasets so results are reproducible and comparable over time.",
+    ],
+    "Modeling": [
+        "Offer model selection (XGBoost/LightGBM if available, plus linear baselines).",
+        "Add hyperparameter tuning with guardrails (time limits + cross-validation).",
+        "Support multiple targets and multi-output forecasting where relevant.",
+    ],
+    "Explainability": [
+        "Add per-row explanations (waterfall/force plots) with a clean UI selector.",
+        "Group features into human-friendly categories (e.g., climate, soil, market).",
+        "Generate an exportable explanation report (PDF/HTML) for stakeholders.",
+    ],
+    "Deployment": [
+        "Introduce a saved ‘model registry’ page inside the app (load, compare, promote).",
+        "Add role-based access (viewer vs analyst) if this becomes multi-user.",
+        "Containerize and pin versions to reduce “works locally” surprises.",
+    ],
+    "Monitoring": [
+        "Track drift (feature drift + prediction drift) and alert on threshold breaches.",
+        "Log SHAP distributions over time to detect explanation drift too.",
+        "Add a simple evaluation dashboard for new data batches.",
+    ],
+}
+
+st.markdown(
+    """
+**Right now**, this dashboard focuses on a stable baseline:
+- Load data
+- Train a reliable model
+- Explain behavior with SHAP
+
+**Next**, I’ll expand it in a structured way so each phase adds real value without breaking the previous one.
+"""
+)
+
+st.markdown(f"### Focus area: {roadmap_focus}")
+for item in roadmap_map[roadmap_focus]:
+    st.write(f"• {item}")
+
+st.markdown(
+    """
+If you want, I can also help you split this into a clean repo structure later:
+`/src` for logic, `/app.py` thin UI layer, plus `/assets` and `/models`.
+That usually makes Streamlit deployments calmer and less… dramatic. 
+"""
+)
