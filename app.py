@@ -168,7 +168,7 @@ We compute:
 
 Because we take absolute values, this measures **strength**, not direction.
 
-## 5) If I continue this project (planned next steps)
+## 5) Phase 2 (planned next steps)
 To deepen analytical value, the next iteration would include:
 1. **Multi-year time series** to study trends and shocks (not only a snapshot).
 2. **Additional drivers** (if available): area harvested, yield, rainfall proxies, prices.
@@ -176,7 +176,7 @@ To deepen analytical value, the next iteration would include:
 4. **Policy-style outputs**: short briefs, confidence ranges, and scenario comparisons.
 5. **More granular aggregation**: clustering countries by crop profiles, not only totals.
 
-These steps would transform the dashboard from a structural prototype into a richer analytical product.
+The Phase 2 would transform the dashboard from a structural prototype into a richer analytical product.
     """)
 
 
@@ -500,7 +500,7 @@ Use Share (%) to avoid confusing scale with composition.
         """)
 
     st.divider()
-    st.subheader("Roadmap: what would be improved next")
+    st.subheader("Roadmap: Phase 2")
     st.markdown("""
 If this project is extended, the next steps would focus on turning this prototype into a richer analytical system:
 
