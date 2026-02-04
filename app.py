@@ -1,513 +1,811 @@
-import numpy as np
-import pandas as pd
 import streamlit as st
-import plotly.express as px
-import shap
-import matplotlib.pyplot as plt
 
-from sklearn.model_selection import train_test_split
-from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import mean_absolute_error, r2_score
+# -------------------------------------------------
+# Page Config
+# -------------------------------------------------
+st.set_page_config(
+    page_title="Harshal M Patel | AI Engineer",
+    layout="wide",
+)
 
+# -------------------------------------------------
+# Brand / UI tokens
+# -------------------------------------------------
+BRAND = {
+    "text": "#111827",        # slate-900
+    "muted": "#6b7280",       # gray-500
+    "border": "rgba(17, 24, 39, 0.12)",
+    "soft": "rgba(17, 24, 39, 0.04)",
+    "accent": "#2563eb",      # blue-600
+    "accent2": "#7c3aed",     # violet-600
+    "chip": "rgba(37, 99, 235, 0.10)",
+    "note": "rgba(37, 99, 235, 0.08)",
+    "codebg": "rgba(17, 24, 39, 0.035)",
+}
 
-# =========================================================
-# Page config
-# =========================================================
-st.set_page_config(page_title="FAOSTAT XAI Case Study", layout="wide")
+# -------------------------------------------------
+# CSS
+# -------------------------------------------------
+st.markdown(
+    f"""
+<style>
+.block-container {{
+    padding-top: 1.2rem;
+    padding-bottom: 2.4rem;
+    max-width: 1220px;
+}}
+section[data-testid="stSidebar"] > div {{
+    padding-top: 1.05rem;
+}}
+h1, h2, h3 {{ letter-spacing: 0.2px; }}
+.small-muted {{ color: {BRAND["muted"]}; font-size: 0.95rem; }}
+.small {{ font-size: 0.95rem; }}
 
+.hero {{
+    border: 1px solid {BRAND["border"]};
+    border-radius: 18px;
+    padding: 1.15rem 1.2rem;
+    background:
+        radial-gradient(1200px 220px at 18% -20%, {BRAND["chip"]}, transparent 60%),
+        radial-gradient(1200px 220px at 92% 0%, rgba(124, 58, 237, 0.10), transparent 55%),
+        #ffffff;
+}}
+.hero-title {{
+    font-size: 2.25rem;
+    font-weight: 900;
+    color: {BRAND["text"]};
+    margin-bottom: 0.12rem;
+}}
+.hero-tag {{
+    font-size: 1.06rem;
+    font-weight: 750;
+    color: rgba(17, 24, 39, 0.78);
+}}
+.hero-meta {{
+    color: {BRAND["muted"]};
+    margin-top: 0.25rem;
+}}
 
-# =========================================================
+.section-title {{
+    font-size: 1.35rem;
+    font-weight: 900;
+    margin: 1.6rem 0 0.55rem 0;
+    color: {BRAND["text"]};
+}}
+.section-line {{
+    height: 2px;
+    width: 96px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, {BRAND["accent"]}, {BRAND["accent2"]});
+    margin-bottom: 0.95rem;
+}}
+.section-sub {{
+    color: {BRAND["muted"]};
+    margin-top: -0.35rem;
+    margin-bottom: 0.8rem;
+}}
+
+.card {{
+    border: 1px solid {BRAND["border"]};
+    border-radius: 18px;
+    padding: 1.05rem 1.1rem;
+    background: #ffffff;
+    margin-bottom: 0.95rem;
+}}
+.card:hover {{ border-color: rgba(17, 24, 39, 0.20); }}
+.card-title {{
+    font-size: 1.10rem;
+    font-weight: 900;
+    margin-bottom: 0.10rem;
+    color: {BRAND["text"]};
+}}
+.card-sub {{
+    color: {BRAND["muted"]};
+    font-size: 0.95rem;
+    margin-bottom: 0.55rem;
+}}
+
+.pill {{
+    display: inline-block;
+    padding: 0.23rem 0.62rem;
+    margin: 0.16rem 0.28rem 0.10rem 0;
+    border-radius: 999px;
+    border: 1px solid {BRAND["border"]};
+    background: {BRAND["soft"]};
+    font-size: 0.84rem;
+    color: rgba(17, 24, 39, 0.85);
+}}
+.pill-accent {{
+    background: {BRAND["note"]};
+    border-color: rgba(37, 99, 235, 0.20);
+}}
+.kpi {{
+    border: 1px solid {BRAND["border"]};
+    border-radius: 14px;
+    padding: 0.75rem 0.85rem;
+    background: #ffffff;
+}}
+.kpi-label {{
+    color: {BRAND["muted"]};
+    font-size: 0.85rem;
+    margin-bottom: 0.15rem;
+}}
+.kpi-value {{
+    font-size: 1.15rem;
+    font-weight: 900;
+    color: {BRAND["text"]};
+}}
+
+.side-card {{
+    border: 1px solid {BRAND["border"]};
+    border-radius: 18px;
+    padding: 0.95rem 0.95rem;
+    background: #ffffff;
+    margin-bottom: 0.85rem;
+}}
+.side-title {{
+    font-weight: 900;
+    color: {BRAND["text"]};
+    margin-bottom: 0.45rem;
+    font-size: 1.02rem;
+}}
+.navbtn {{
+    display: block;
+    padding: 0.55rem 0.75rem;
+    border: 1px solid {BRAND["border"]};
+    border-radius: 12px;
+    background: #ffffff;
+    color: {BRAND["text"]};
+    font-weight: 750;
+    text-decoration: none !important;
+    margin: 0.35rem 0;
+}}
+.navbtn:hover {{
+    border-color: rgba(17, 24, 39, 0.22);
+    background: {BRAND["soft"]};
+}}
+
+.anchor {{
+    height: 1px;
+    margin-top: -70px;
+    padding-top: 70px;
+}}
+
+/* Blog polish */
+.note-meta {{
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
+    flex-wrap: wrap;
+    margin: 0.2rem 0 0.6rem 0;
+}}
+.meta-dot {{
+    width: 5px; height: 5px;
+    background: rgba(17,24,39,0.35);
+    border-radius: 999px;
+}}
+.callout {{
+    border: 1px solid rgba(37, 99, 235, 0.20);
+    background: {BRAND["note"]};
+    border-radius: 14px;
+    padding: 0.75rem 0.85rem;
+    margin-top: 0.6rem;
+}}
+.codebox {{
+    border: 1px solid rgba(17, 24, 39, 0.12);
+    background: {BRAND["codebg"]};
+    border-radius: 14px;
+    padding: 0.75rem 0.85rem;
+    margin-top: 0.65rem;
+}}
+.codebox pre {{ margin: 0; font-size: 0.85rem; }}
+
+/* Timeline */
+.timeline {{
+    position: relative;
+    padding-left: 1.1rem;
+}}
+.timeline::before {{
+    content: "";
+    position: absolute;
+    left: 0.36rem;
+    top: 0.2rem;
+    bottom: 0.2rem;
+    width: 2px;
+    background: rgba(17, 24, 39, 0.10);
+    border-radius: 999px;
+}}
+.t-item {{
+    position: relative;
+    padding-left: 1.25rem;
+    margin-bottom: 0.9rem;
+}}
+.t-dot {{
+    position: absolute;
+    left: 0.18rem;
+    top: 0.42rem;
+    width: 12px;
+    height: 12px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, {BRAND["accent"]}, {BRAND["accent2"]});
+    box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.10);
+}}
+.t-card {{
+    border: 1px solid {BRAND["border"]};
+    border-radius: 18px;
+    padding: 0.95rem 1.05rem;
+    background: #ffffff;
+}}
+.t-title {{
+    font-weight: 900;
+    color: {BRAND["text"]};
+    font-size: 1.05rem;
+}}
+.t-meta {{
+    color: {BRAND["muted"]};
+    margin-top: 0.15rem;
+    margin-bottom: 0.55rem;
+    font-size: 0.93rem;
+}}
+.visit {{
+    margin-top: 0.55rem;
+    padding-top: 0.25rem;
+}}
+.visit a {{
+    color: {BRAND["accent"]};
+    font-weight: 800;
+    text-decoration: none;
+}}
+.visit a:hover {{
+    text-decoration: underline;
+}}
+</style>
+""",
+    unsafe_allow_html=True,
+)
+
+# -------------------------------------------------
 # Data
-# =========================================================
-@st.cache_data
-def load_data():
-    def load_country(path: str, country: str) -> pd.DataFrame:
-        df = pd.read_csv(path)
-        df["Country"] = country
-        return df
+# -------------------------------------------------
+PROFILE = {
+    "name": "Harshal M Patel",
+    "tagline": "AI Engineer | Data Science | Software Engineering | Analytics",
+    "location": "Rome, Italy (available to relocate)",
+    "email": "harshalmpatel2001@gmail.com",
+    "phone": "+91 9974890592",
+    "linkedin": "https://www.linkedin.com/in/harshal-patel-246306352/",
+}
 
-    df = pd.concat(
-        [
-            load_country("data/italy.csv", "Italy"),
-            load_country("data/france.csv", "France"),
-            load_country("data/germany.csv", "Germany"),
-            load_country("data/spain.csv", "Spain"),
+ABOUT = (
+    "AI Engineer focused on turning data into decisions through analysis, modeling, explainability, and deployment. "
+    "Work is framed like a data product: define the problem, build a reliable pipeline, and ship an interface people can use."
+)
+
+EXPERIENCE = [
+    {
+        "role": "IT & Marketing Support",
+        "company": "Vinayak Infotech",
+        "meta": "Ahmedabad, India • May 2024 – 2025",
+        "problem": "Operational teams needed reliable systems and smoother technical workflows across support and marketing execution.",
+        "approach": [
+            "Installed and configured computer systems and hardware for stable day-to-day operations.",
+            "Mentored team members in Java and Python (advanced and libraries) and supported testing tasks.",
+            "Introduced practical fixes that reduced bottlenecks in marketing workflows.",
         ],
-        ignore_index=True,
+        "outcome": "Improved internal efficiency, reduced technical downtime, and enabled faster execution with clearer technical support.",
+        "signals": ["Delivery", "Mentorship", "Operations", "Workflow Efficiency"],
+        "tags": ["Python", "Java", "IT Support", "Process Improvement"],
+    },
+    {
+        "role": "Software Engineer",
+        "company": "Cignex Datamatics",
+        "meta": "Gujarat, India • Aug 2022 – Jul 2023",
+        "problem": "Enterprise releases required stronger quality gates to minimize defects and improve stability for multinational clients.",
+        "approach": [
+            "Developed structured testing workflows using Jira and collaborated closely with QA teams.",
+            "Supported Java-based systems and improved testing consistency across environments.",
+            "Focused on early defect discovery to reduce downstream rework.",
+        ],
+        "outcome": "Improved release reliability and reduced post-deployment issues through stronger testing discipline and collaboration.",
+        "signals": ["Quality", "Reliability", "QA Collaboration", "Client-Facing Systems"],
+        "tags": ["Java", "Jira", "QA", "Collaboration"],
+    },
+    {
+        "role": "Software Engineering Intern",
+        "company": "Axis Ray Technology",
+        "meta": "Gujarat, India • Jun 2022 – Dec 2022",
+        "problem": "Projects needed consistent development support and clean data integration across teams and timelines.",
+        "approach": [
+            "Strengthened skills in Java, Advanced Java, and SQL-based integration patterns.",
+            "Worked on real-world tasks with cross-national teams and project stakeholders.",
+            "Supported peer productivity through mentoring and collaborative delivery.",
+        ],
+        "outcome": "Accelerated delivery readiness by improving implementation consistency and team coordination.",
+        "signals": ["Engineering Foundations", "SQL Integration", "Team Support"],
+        "tags": ["Advanced Java", "SQL", "Collaboration", "Mentorship"],
+    },
+    {
+        "role": "Sales Executive",
+        "company": "AURA ETHNICS",
+        "meta": "Jan 2022 – Jun 2022",
+        "problem": "Sales performance needed clearer visibility into customer behavior and what drives conversion.",
+        "approach": [
+            "Used Google Analytics insights to understand traffic, conversion patterns, and customer journeys.",
+            "Adjusted listings and promotions using data signals rather than guesswork.",
+            "Strengthened customer experience through product storytelling and service quality.",
+        ],
+        "outcome": "Improved conversion outcomes through data-informed decision-making and stronger customer engagement.",
+        "signals": ["Analytics", "Storytelling", "Conversion Focus"],
+        "tags": ["Analytics", "Customer Engagement", "Sales"],
+    },
+]
+
+PROJECTS = [
+    {
+        "title": "Explainable ML for Agricultural Production (FAOSTAT + SHAP)",
+        "one_liner": "Random Forest + SHAP to explain cross-country production drivers (crop vs country effects).",
+        "summary": (
+            "Built an explainable ML dashboard to compare agricultural production patterns across Italy, France, Germany, and Spain. "
+            "Used Random Forest as an interpretive model and SHAP to quantify feature influence transparently."
+        ),
+        "highlights": [
+            "Compared crop-driven vs country-driven production patterns across multiple nations.",
+            "Used SHAP to translate model behavior into stakeholder-friendly explanations.",
+            "Reported MAE, Relative MAE, and R² to keep evaluation transparent and interpretable.",
+        ],
+        "stack": ["Python (Advanced)", "Random Forest", "SHAP", "Explainable AI", "Streamlit"],
+        "live": "https://fao-shap-dashboard-fyfzpqshuzcpfvz79m6xio.streamlit.app/#d166e061",
+        "tags": ["XAI", "SHAP", "ML", "Streamlit"],
+    },
+    {
+        "title": "Rome Airbnb Analysis and Price Prediction",
+        "one_liner": "EDA + interactive mapping + SVM classifier to categorize listing prices in Rome.",
+        "summary": (
+            "Analyzed publicly available Rome Airbnb listings to understand pricing patterns. "
+            "Built a dashboard to visualize hotspots and trained an SVM classifier to predict price categories."
+        ),
+        "highlights": [
+            "Room type + neighborhood emerged as primary price drivers.",
+            "Premium zones (Centro Storico, Trastevere) highlighted using map-based insights.",
+            "Stakeholder-friendly dashboard with clear visuals and variable explanations.",
+        ],
+        "stack": ["Python (Advanced)", "EDA", "SVM", "Streamlit", "Data Storytelling"],
+        "live": "https://rome-airbnb-app-bsr6lkugduccvbrwmjfksk.streamlit.app/",
+        "tags": ["EDA", "Maps", "ML", "Streamlit"],
+    },
+]
+
+SKILLS = {
+    "Programming & Data": [
+        "Python (Advanced & Libraries)", "Advanced Java", "SQL",
+        "EDA", "K-Means", "Regression", "Random Forest", "SVM", "Neural Networks",
+        "Data Management", "Model Building & Deployment", "Predictive Analysis",
+    ],
+    "Tools & Platforms": ["Streamlit", "VS Code", "Jupyter Notebook", "GitHub", "Jira", "MS Excel", "Google Workspace"],
+    "Web & Design": ["HTML", "CSS", "JavaScript", "Figma", "Interactive Dashboards"],
+}
+
+EDUCATION = [
+    {
+        "title": "International Master in Data Science (Ongoing)",
+        "meta": "Rome Business School | Rome, Italy",
+        "bullets": [
+            "Applied learning through Oracle labs: data workflows, database foundations, and practical analytics.",
+            "IBM labs exposure: enterprise-style problem framing, tooling practices, and real-world DS workflows.",
+            "Industry excursions with IBM and Owkin.",
+        ],
+    },
+    {
+        "title": "B.Tech in Computer Engineering (First Class Distinction)",
+        "meta": "Swarrnim Institute of Technology & Startup | Gujarat, India | 2020 – 2024",
+        "bullets": [
+            "Debate Champion (2020–2021).",
+            "Student Council Member (2020–2024).",
+            "Hackathons; supported Blood Donation Camp organization (2023).",
+        ],
+    },
+]
+
+# NEW: separate section for excursions with your IBM details
+INDUSTRY_EXCURSIONS = [
+    {
+        "title": "IBM Industry Excursion | AI + Research Labs",
+        "meta": "Rome Business School (Industry Exposure)",
+        "bullets": [
+            "Interactive session with IBM lab team on the Granite model and enterprise AI workflows.",
+            "Discussion focus: integrating an LLM layer to make Granite outputs more specific and context-driven for business use cases.",
+            "Hands-on exposure to cybersecurity experiments and lab demonstrations.",
+            "Explored applied quantum computing concepts and demonstrations for next-gen computation workflows.",
+        ],
+        "tags": ["IBM Granite", "LLMs", "Cybersecurity Labs", "Quantum Computing"],
+    },
+    {
+        "title": "Owkin Industry Excursion | AI in Healthcare",
+        "meta": "Rome Business School (Industry Exposure)",
+        "bullets": [
+            "Explored applied AI use cases and problem framing in healthcare-focused environments.",
+            "Observed how organizations operationalize ML workflows and translate insights into decisions.",
+        ],
+        "tags": ["Healthcare AI", "Applied ML", "Problem Framing"],
+    },
+]
+
+LANGUAGES = "English (Native/Bilingual), Hindi (Native), Italian (Basic – improving)"
+
+EXPLORING = [
+    "Embedding OpenAI into data science workflows (retrieval, prompting patterns, evaluation).",
+    "Embeddings + semantic search for context-aware analytics and knowledge retrieval.",
+    "Model building and deployment patterns (reproducibility, packaging, monitoring mindset).",
+    "Strengthening applied skills through Oracle and IBM labs: data workflows, analytics, and DS tooling practices.",
+    "Italian language: targeting A2 proficiency for international technical environments.",
+    "Exploring LLM models and practical use cases (analysis, summarization, data assistants).",
+]
+
+BLOG_NOTES = [
+    {
+        "title": "How SHAP explains model drivers in real decision-making",
+        "subtitle": "Interpretability as a product requirement, not a nice-to-have",
+        "date": "Jan 2026",
+        "read_time": "3 min read",
+        "tags": ["XAI", "SHAP", "Interpretability", "Random Forest"],
+        "lead": "When models influence decisions, accuracy alone is insufficient. Explainability creates trust, comparison, and accountability.",
+        "bullets": [
+            "Use SHAP to quantify feature contribution, not just rank importance.",
+            "Compare segments (countries, categories, regions) using consistent explanations.",
+            "Translate model behavior into stakeholder language: what drives outcomes and why.",
+        ],
+        "callout_title": "Hard-earned lesson",
+        "callout": "Models become useful when their reasoning can be challenged, explained, and improved.",
+        "code_title": "Conceptual SHAP workflow",
+        "code": """# Conceptual outline
+model = RandomForestRegressor(...)
+model.fit(X_train, y_train)
+
+explainer = shap.Explainer(model, X_train)
+shap_values = explainer(X_test)
+
+# Global drivers
+shap.plots.bar(shap_values)
+
+# Local explanations
+shap.plots.waterfall(shap_values[0])""",
+    },
+    {
+        "title": "Why EDA + SVM works well for price categories",
+        "subtitle": "Reframing the problem to make results stable and communicable",
+        "date": "Jan 2026",
+        "read_time": "3 min read",
+        "tags": ["EDA", "SVM", "Classification", "Dashboards"],
+        "lead": "Pricing problems often improve when the problem is reframed. EDA reveals distribution shifts and outliers, and SVM gives a strong, interpretable baseline.",
+        "bullets": [
+            "Start with EDA: outliers, skew, neighborhood effects, and feature leakage checks.",
+            "Bin prices into categories to stabilize targets and support clearer storytelling.",
+            "Use SVM as a strong baseline classifier before adding complexity.",
+        ],
+        "callout_title": "Hard-earned lesson",
+        "callout": "A model that stakeholders understand beats a model nobody trusts.",
+        "code_title": "Conceptual SVM pipeline",
+        "code": """# Conceptual outline
+X = features
+y = price_category  # binned labels
+
+pipe = Pipeline([
+  ("prep", preprocessor),
+  ("clf", SVC(kernel="rbf"))
+])
+
+pipe.fit(X_train, y_train)
+pred = pipe.predict(X_test)""",
+    },
+    # NEW NOTE 1
+    {
+        "title": "Deployment friction: parser & Python version mismatch",
+        "subtitle": "Stabilizing builds by pinning versions and simplifying dependencies",
+        "date": "Jan 2026",
+        "read_time": "3 min read",
+        "tags": ["Deployment", "Python", "Dependencies", "Streamlit Cloud"],
+        "lead": "Deployments fail more often from environment mismatches than from code. Parser issues and Python version drift are common failure points.",
+        "bullets": [
+            "Pin Python version and critical libs to avoid dependency resolution surprises.",
+            "Reduce heavy or unused packages to keep builds lightweight and stable.",
+            "Bypass parser fragility by simplifying inputs, validating formats, and using safer parsing patterns.",
+            "Treat the deployment environment as part of the system: reproducibility is a feature.",
+        ],
+        "callout_title": "Hard-earned lesson",
+        "callout": "If a project can’t deploy consistently, it isn’t finished yet.",
+        "code_title": "Conceptual fix checklist",
+        "code": """# Conceptual checklist
+# 1) Pin python version: runtime.txt (example)
+# python-3.11
+
+# 2) Pin dependencies: requirements.txt (example)
+# streamlit==X.Y.Z
+# scikit-learn==A.B.C
+
+# 3) Remove unused heavy libs
+# 4) Validate inputs + safer parsing""",
+    },
+    # NEW NOTE 2
+    {
+        "title": "Streamlit vs Django: demo speed vs production structure",
+        "subtitle": "Why Streamlit shines for prototypes and Django scales for permanent apps",
+        "date": "Jan 2026",
+        "read_time": "4 min read",
+        "tags": ["Django", "Streamlit", "Architecture", "Deployment"],
+        "lead": "Different tools win at different stages. Streamlit accelerates demos, while Django supports long-term app structure when features and users grow.",
+        "bullets": [
+            "Streamlit: fast UI iteration, perfect for showcasing models and dashboards quickly.",
+            "Django: stronger separation of concerns (apps/modules), durable routing, auth, and database integration.",
+            "Production Django requires deeper planning: segmentation, services, background tasks, and thorough processing pipelines.",
+            "A practical approach: Streamlit for model demos; Django for permanent products with users and operational workflows.",
+        ],
+        "callout_title": "Hard-earned lesson",
+        "callout": "A demo sells an idea. A production app supports a business.",
+        "code_title": "Conceptual architecture contrast",
+        "code": """# Streamlit (demo-first)
+# app.py -> UI + light logic
+
+# Django (production-first)
+# project/
+#   apps/
+#   urls.py
+#   views.py
+#   services/
+#   models.py
+#   templates/
+#   tasks/ (Celery)
+#   tests/""",
+    },
+]
+
+# -------------------------------------------------
+# Helpers
+# -------------------------------------------------
+def pills(items, accent=False):
+    cls = "pill pill-accent" if accent else "pill"
+    return "".join([f"<span class='{cls}'>{x}</span>" for x in items])
+
+def anchor(anchor_id: str):
+    st.markdown(f"<div id='{anchor_id}' class='anchor'></div>", unsafe_allow_html=True)
+
+def section(title: str, subtitle: str | None = None):
+    st.markdown(f"<div class='section-title'>{title}</div>", unsafe_allow_html=True)
+    st.markdown("<div class='section-line'></div>", unsafe_allow_html=True)
+    if subtitle:
+        st.markdown(f"<div class='section-sub'>{subtitle}</div>", unsafe_allow_html=True)
+
+def timeline_open():
+    st.markdown("<div class='timeline'>", unsafe_allow_html=True)
+
+def timeline_close():
+    st.markdown("</div>", unsafe_allow_html=True)
+
+def timeline_item(e):
+    st.markdown("<div class='t-item'>", unsafe_allow_html=True)
+    st.markdown("<div class='t-dot'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='t-card'>", unsafe_allow_html=True)
+
+    st.markdown(f"<div class='t-title'>{e['role']} • {e['company']}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='t-meta'>{e['meta']}</div>", unsafe_allow_html=True)
+
+    st.markdown(pills(e["signals"], accent=True), unsafe_allow_html=True)
+
+    cols = st.columns([0.34, 0.33, 0.33], vertical_alignment="top")
+    with cols[0]:
+        st.markdown("**Problem**")
+        st.write(e["problem"])
+    with cols[1]:
+        st.markdown("**Approach**")
+        st.write("\n".join([f"- {x}" for x in e["approach"]]))
+    with cols[2]:
+        st.markdown("**Outcome**")
+        st.write(e["outcome"])
+
+    st.markdown(pills(e["tags"]), unsafe_allow_html=True)
+    st.markdown("</div></div>", unsafe_allow_html=True)
+
+# -------------------------------------------------
+# Sidebar
+# -------------------------------------------------
+with st.sidebar:
+    st.markdown("<div class='side-card'>", unsafe_allow_html=True)
+    st.markdown("<div class='side-title'>Profile</div>", unsafe_allow_html=True)
+    st.markdown(f"**{PROFILE['name']}**", unsafe_allow_html=True)
+    st.markdown(f"<div class='small-muted'>{PROFILE['tagline']}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='small-muted' style='margin-top:0.35rem;'>{PROFILE['location']}</div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    st.markdown("<div class='side-card'>", unsafe_allow_html=True)
+    st.markdown("<div class='side-title'>Jump to</div>", unsafe_allow_html=True)
+    st.markdown(
+        """
+<a class="navbtn" href="#overview">Overview</a>
+<a class="navbtn" href="#exploring">Exploring</a>
+<a class="navbtn" href="#experience">Experience Timeline</a>
+<a class="navbtn" href="#projects">Projects</a>
+<a class="navbtn" href="#excursions">Industry Excursions</a>
+<a class="navbtn" href="#notes">Notes</a>
+<a class="navbtn" href="#skills">Skills</a>
+<a class="navbtn" href="#education">Education</a>
+<a class="navbtn" href="#languages">Languages</a>
+<a class="navbtn" href="#contact">Contact</a>
+""",
+        unsafe_allow_html=True,
+    )
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# -------------------------------------------------
+# Hero / Overview
+# -------------------------------------------------
+anchor("overview")
+st.markdown("<div class='hero'>", unsafe_allow_html=True)
+left, right = st.columns([0.70, 0.30], vertical_alignment="top")
+
+with left:
+    st.markdown(f"<div class='hero-title'>{PROFILE['name']}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='hero-tag'>{PROFILE['tagline']}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='hero-meta'>{PROFILE['location']}</div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:0.55rem;'></div>", unsafe_allow_html=True)
+    st.write(ABOUT)
+
+with right:
+    st.markdown("<div class='kpi'><div class='kpi-label'>Deployed Apps</div><div class='kpi-value'>2</div></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:0.6rem;'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='kpi'><div class='kpi-label'>Focus</div><div class='kpi-value'>AI + Analytics</div></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:0.6rem;'></div>", unsafe_allow_html=True)
+    st.markdown("<div class='kpi'><div class='kpi-label'>Strength</div><div class='kpi-value'>Dashboards + ML</div></div>", unsafe_allow_html=True)
+
+st.markdown("</div>", unsafe_allow_html=True)
+
+# -------------------------------------------------
+# Exploring
+# -------------------------------------------------
+anchor("exploring")
+section("What’s Being Explored", "Applied labs, deployment patterns, and LLM workflows.")
+st.markdown("<div class='card'>", unsafe_allow_html=True)
+st.write("\n".join([f"- {x}" for x in EXPLORING]))
+st.markdown(pills(["Oracle Labs", "IBM Labs", "Embeddings", "LLMs", "Deployment Patterns"], accent=True), unsafe_allow_html=True)
+st.markdown("</div>", unsafe_allow_html=True)
+
+# -------------------------------------------------
+# Experience Timeline
+# -------------------------------------------------
+anchor("experience")
+section("Professional Experience Timeline", "Dashboard framing: Problem → Approach → Outcome.")
+timeline_open()
+for e in EXPERIENCE:
+    timeline_item(e)
+timeline_close()
+
+# -------------------------------------------------
+# Projects
+# -------------------------------------------------
+anchor("projects")
+section("Projects", "Deployed dashboards. Links kept minimal and clean.")
+
+for p in PROJECTS:
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+
+    st.markdown(f"<div class='card-title'>{p['title']}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='card-sub'>{p['one_liner']}</div>", unsafe_allow_html=True)
+    st.markdown(pills(p["stack"]), unsafe_allow_html=True)
+
+    st.markdown("**Summary**")
+    st.write(p["summary"])
+
+    st.markdown("**Highlights**")
+    st.write("\n".join([f"- {x}" for x in p["highlights"]]))
+
+    st.markdown(
+        f"<div class='visit small-muted'> <a href='{p['live']}' target='_blank'>Visit app</a> "
+        f"<span style='color:{BRAND['muted']};'>({p['live']})</span></div>",
+        unsafe_allow_html=True,
     )
 
-    # Minimal columns for this study
-    df["Value"] = pd.to_numeric(df["Value"], errors="coerce")
-    df = df.dropna(subset=["Value"])
-    df = df[["Country", "Item", "Value"]].copy()
+    st.markdown("</div>", unsafe_allow_html=True)
 
-    df["Country"] = df["Country"].astype(str)
-    df["Item"] = df["Item"].astype(str)
+# -------------------------------------------------
+# Industry Excursions (NEW SECTION)
+# -------------------------------------------------
+anchor("excursions")
+section("Industry Excursions", "Applied exposure to enterprise AI labs and real-world research environments.")
 
-    return df
+for ex in INDUSTRY_EXCURSIONS:
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+    st.markdown(f"<div class='card-title'>{ex['title']}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='card-sub'>{ex['meta']}</div>", unsafe_allow_html=True)
+    st.write("\n".join([f"- {b}" for b in ex["bullets"]]))
+    st.markdown(pills(ex["tags"], accent=True), unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
+# -------------------------------------------------
+# Notes
+# -------------------------------------------------
+anchor("notes")
+section("Notes", "Short technical notes: explainability, framing, and dashboard-first ML.")
+for note in BLOG_NOTES:
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
 
-df = load_data()
-FEATURES = ["Country", "Item"]
-TARGET = "Value"
+    st.markdown(f"<div class='card-title'>{note['title']}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='card-sub'>{note['subtitle']}</div>", unsafe_allow_html=True)
 
-
-# =========================================================
-# Model training
-# =========================================================
-@st.cache_resource
-def train_model(df: pd.DataFrame):
-    X = df[FEATURES]
-    y = df[TARGET]
-
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.25, random_state=42
+    st.markdown(
+        f"""
+<div class="note-meta">
+  <span class="small-muted">{note["date"]}</span>
+  <span class="meta-dot"></span>
+  <span class="small-muted">{note["read_time"]}</span>
+</div>
+""",
+        unsafe_allow_html=True,
     )
-
-    preprocessor = ColumnTransformer(
-        [("cat", OneHotEncoder(handle_unknown="ignore"), FEATURES)]
-    )
-
-    model = RandomForestRegressor(
-        n_estimators=140,
-        max_depth=14,
-        random_state=42,
-        n_jobs=-1,
-    )
-
-    pipeline = Pipeline([("preprocess", preprocessor), ("model", model)])
-    pipeline.fit(X_train, y_train)
-
-    preds = pipeline.predict(X_test)
-    mae = mean_absolute_error(y_test, preds)
-    r2 = r2_score(y_test, preds)
-
-    return pipeline, X_train, X_test, y_train, y_test, mae, r2
-
-
-pipeline, X_train, X_test, y_train, y_test, mae, r2 = train_model(df)
-
-median_value = float(df["Value"].median()) if len(df) else np.nan
-relative_mae = (mae / median_value) * 100 if median_value and not np.isnan(median_value) else np.nan
-
-
-# =========================================================
-# SHAP explainer
-# IMPORTANT: do NOT cache a function that takes 'pipeline' as param
-# =========================================================
-rf_model = pipeline.named_steps["model"]
-explainer = shap.TreeExplainer(rf_model)
-
-
-def transform_with_names(pipeline: Pipeline, X: pd.DataFrame):
-    pre = pipeline.named_steps["preprocess"]
-    X_trans = pre.transform(X).toarray()
-    names = pre.named_transformers_["cat"].get_feature_names_out(FEATURES)
-    return X_trans, names
-
-
-# =========================================================
-# Header
-# =========================================================
-st.title(" FAOSTAT Explainable ML Dashboard (Case Study)")
-st.caption("Italy • France • Germany • Spain | Explainable ML + Interactive Comparison")
-
-
-# =========================================================
-# Narrative block: Motivation -> Problem -> Solution -> Theory -> Next steps
-# (More detailed, structured, and intentionally not '100% complete')
-# =========================================================
-with st.expander(" Case Study Narrative (Motivation → Problem → Solution → Theory → Next steps)", expanded=True):
-    st.markdown("""
-## 1) Motivation (why this matters)
-In international agricultural analysis, decision-makers often need to compare countries transparently:
-- What is different across countries?
-- Which crops dominate production?
-- Are observed differences primarily about crop composition or broader structural context?
-
-In many practical settings, the objective is not purely forecasting, but **interpretable comparison** and **clear communication**.
-
-## 2) The issue (the analytical gap)
-Simple totals and rankings tell *what* is produced, but not *why* differences occur.  
-A common gap is separating two intertwined drivers:
-- **Item effects**: “This country looks high because it produces high-volume crops.”
-- **Country effects**: “This country looks high because country context amplifies output (structure, geography, systems).”
-
-Without a structured approach, it’s easy to confuse:
-- scale vs composition,
-- dominance of a few crops vs broad structural differences.
-
-## 3) The solution (what this project provides)
-This project builds a reproducible, explainable workflow using FAOSTAT production data to:
-- compare production composition across countries (Explore)
-- generate a structured estimate for any (Country, Item) pair (Predict)
-- explain estimates using SHAP contributions (Explain)
-- aggregate SHAP to quantify “Crop vs Country” influence (Insights)
-
-The emphasis is **interpretability and comparison**, not claiming real-world forecasting capability.
-
-## 4) Theory (how to interpret the explainability)
-### 4.1 Why a model at all?
-The model acts as a structured way to learn patterns in the dataset, so that we can ask:
-- “What does the model attribute differences to, on average?”
-- “How strong is the role of crop vs country in the learned structure?”
-
-### 4.2 What SHAP represents (simple rule-set)
-SHAP decomposes each prediction into additive contributions:
-- Positive SHAP value → pushes the estimate upward
-- Negative SHAP value → pushes the estimate downward
-- Contributions sum back to the prediction (baseline + effects)
-
-### 4.3 Aggregated SHAP (the key comparison)
-We compute:
-- **avg_abs_item_effect**: how strongly crop choice typically shifts estimates up/down
-- **avg_abs_country_effect**: how strongly country context typically shifts estimates up/down
-
-Because we take absolute values, this measures **strength**, not direction.
-
-## 5) Phase 2 (planned next steps)
-To deepen analytical value, the next iteration would include:
-1. **Multi-year time series** to study trends and shocks (not only a snapshot).
-2. **Additional drivers** (if available): area harvested, yield, rainfall proxies, prices.
-3. **Better validation strategy**: country-aware splits and sensitivity checks.
-4. **Policy-style outputs**: short briefs, confidence ranges, and scenario comparisons.
-5. **More granular aggregation**: clustering countries by crop profiles, not only totals.
-
-The Phase 2 would transform the dashboard from a structural prototype into a richer analytical product.
-    """)
-
-
-# =========================================================
-# Metrics row + interpretability
-# =========================================================
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Rows", f"{len(df)}")
-c2.metric("MAE (tonnes)", f"{mae:,.0f}")
-c3.metric("Relative MAE", f"{relative_mae:.1f}%" if not np.isnan(relative_mae) else "NA")
-c4.metric("R²", f"{r2:.3f}")
-
-with st.expander("How to interpret MAE / Relative MAE / R²", expanded=False):
-    st.markdown(f"""
-- **MAE (tonnes)** is the average absolute error on held-out test data.
-- **Relative MAE (%)** scales MAE by the median production value so the error is easier to interpret.
-  Here, Relative MAE ≈ **{relative_mae:.1f}%**.
-- **R²** can be modest because the model intentionally uses only (Country, Item) and does not include
-  real drivers like yield, harvested area, weather, management inputs, etc. This is expected for a minimal structural prototype.
-    """)
-
-
-# =========================================================
-# Tabs
-# =========================================================
-tab1, tab2, tab3 = st.tabs(["Explore", "Predict + Explain", "Insights"])
-
-
-# ----------------------------
-# TAB 1: Explore
-# ----------------------------
-with tab1:
-    st.subheader("Explore")
-    st.caption("Compare production composition within a country and across countries (structure vs scale).")
-
-    country = st.selectbox("Country", sorted(df["Country"].unique()))
-    df_c = df[df["Country"] == country].copy()
-
-    left, right = st.columns([2, 1])
-    with left:
-        st.dataframe(df_c.sort_values("Value", ascending=False).head(30), use_container_width=True)
-    with right:
-        st.markdown("#### Quick stats")
-        st.write(f"Items: **{df_c['Item'].nunique()}**")
-        st.write(f"Total production: **{df_c['Value'].sum():,.0f} t**")
-        st.write(f"Median item production: **{df_c['Value'].median():,.0f} t**")
-
-    topn = st.slider("Top-N items", 5, 30, 10)
-
-    view_mode = st.radio(
-        "Bar chart view",
-        ["Total production (tonnes)", "Share of country total (%)"],
-        horizontal=True
-    )
-    use_log = st.checkbox("Use log scale (only for tonnes)", value=False)
-
-    top_items = (
-        df_c.groupby("Item", as_index=False)["Value"]
-        .sum()
-        .sort_values("Value", ascending=False)
-        .head(topn)
-    )
-
-    if view_mode == "Share of country total (%)":
-        denom = df_c["Value"].sum()
-        top_items["Value"] = (top_items["Value"] / denom) * 100 if denom else 0
-        y_label = "Share (%)"
-    else:
-        y_label = "Tonnes"
-
-    fig = px.bar(
-        top_items,
-        x="Item",
-        y="Value",
-        title=f"{country}: Top {topn} items",
-        labels={"Value": y_label}
-    )
-    if use_log and view_mode == "Total production (tonnes)":
-        fig.update_yaxes(type="log")
-
-    st.plotly_chart(fig, use_container_width=True)
-
-    with st.expander("How to read this chart", expanded=False):
-        st.markdown("""
-- **Tonnes** shows absolute magnitude (bigger countries/crops dominate).
-- **Share (%)** shows structure: which crops dominate within the country regardless of scale.
-Use Share (%) when comparing countries fairly.
-        """)
-
-    st.download_button(
-        " Download this country subset (CSV)",
-        df_c.to_csv(index=False).encode("utf-8"),
-        file_name=f"{country}_data.csv",
-        mime="text/csv",
-    )
-
-    st.divider()
-    st.subheader("Compare two countries")
-    st.caption("This answers: Are differences mainly scale-driven or composition-driven?")
-
-    colA, colB = st.columns(2)
-    countries_sorted = sorted(df["Country"].unique())
-    with colA:
-        cA = st.selectbox("Country A", countries_sorted, index=0, key="cA")
-    with colB:
-        cB = st.selectbox("Country B", countries_sorted, index=1 if len(countries_sorted) > 1 else 0, key="cB")
-
-    dfA = df[df["Country"] == cA].groupby("Item", as_index=False)["Value"].sum()
-    dfB = df[df["Country"] == cB].groupby("Item", as_index=False)["Value"].sum()
-
-    top_global = (
-        pd.concat([dfA, dfB])
-        .groupby("Item", as_index=False)["Value"].sum()
-        .sort_values("Value", ascending=False)
-        .head(15)["Item"]
-    )
-
-    dfA2 = dfA[dfA["Item"].isin(top_global)].assign(Country=cA)
-    dfB2 = dfB[dfB["Item"].isin(top_global)].assign(Country=cB)
-    cmp = pd.concat([dfA2, dfB2], ignore_index=True)
-
-    cmp_mode = st.radio("Compare as", ["Tonnes", "Share (%)"], horizontal=True, key="cmp_mode")
-    if cmp_mode == "Share (%)":
-        cmp["Value"] = cmp.groupby("Country")["Value"].transform(lambda s: (s / s.sum() * 100) if s.sum() else 0)
-
-    fig_cmp = px.bar(
-        cmp,
-        x="Item",
-        y="Value",
-        color="Country",
-        barmode="group",
-        title=f"{cA} vs {cB}: Top items comparison"
-    )
-    st.plotly_chart(fig_cmp, use_container_width=True)
-
-    with st.expander("How to interpret this comparison", expanded=False):
-        st.markdown("""
-- If the **Tonnes** chart differs a lot but the **Share (%)** chart looks similar, differences are mostly **scale**.
-- If the **Share (%)** chart differs strongly, differences are mainly **composition/structure**.
-        """)
-
-
-# ----------------------------
-# TAB 2: Predict + Explain
-# ----------------------------
-with tab2:
-    st.subheader("Predict + Explain (SHAP)")
-    st.caption("Pick a (Country, Item) pair to view an estimate and an explanation of what drove it.")
-
-    cA, cB = st.columns(2)
-    with cA:
-        sel_country = st.selectbox("Country", sorted(df["Country"].unique()), key="p_country")
-    with cB:
-        items_for_country = sorted(df[df["Country"] == sel_country]["Item"].unique())
-        sel_item = st.selectbox("Item", items_for_country, key="p_item")
-
-    row = pd.DataFrame([{"Country": sel_country, "Item": sel_item}])
-    pred = float(pipeline.predict(row)[0])
-
-    st.metric("Model estimate (tonnes)", f"{pred:,.0f}")
-
-    with st.expander("How to read the SHAP waterfall", expanded=False):
-        st.markdown("""
-- The model starts from a **baseline** (average prediction).
-- It then adds/subtracts contributions from the active features (Country_* and Item_*).
-- The final value is the estimate for your selected (Country, Item).
-
-Positive bars push the estimate up; negative bars push it down.
-        """)
-
-    X_trans, names = transform_with_names(pipeline, row)
-    shap_vals = explainer.shap_values(X_trans, check_additivity=False)[0]
-
-    exp = shap.Explanation(
-        values=shap_vals,
-        base_values=explainer.expected_value,
-        feature_names=names,
-    )
-
-    st.markdown("#### SHAP explanation (waterfall)")
-    plt.figure()
-    shap.waterfall_plot(exp, max_display=12, show=False)
-    st.pyplot(plt.gcf(), clear_figure=True)
-
-    st.markdown("#### Top contributors (with direction)")
-    top_idx = np.argsort(np.abs(shap_vals))[::-1][:15]
-    contrib = pd.DataFrame(
-        {"feature": np.array(names)[top_idx], "shap_value": shap_vals[top_idx]}
-    )
-    contrib["direction"] = np.where(contrib["shap_value"] >= 0, "↑ increases", "↓ decreases")
-    contrib = contrib.sort_values(by="shap_value", ascending=False)
-
-    st.dataframe(contrib, use_container_width=True)
-
-    st.download_button(
-        " Download SHAP contributors (CSV)",
-        contrib.to_csv(index=False).encode("utf-8"),
-        file_name=f"shap_contrib_{sel_country}_{sel_item}.csv".replace(" ", "_"),
-        mime="text/csv",
-    )
-
-
-# ----------------------------
-# TAB 3: Insights
-# ----------------------------
-with tab3:
-    st.subheader("Insights (Crop vs Country)")
-    st.caption("Aggregated SHAP compares how strong crop choice vs country context is, on average.")
-
-    with st.expander("What do 'avg_abs_item_effect' and 'avg_abs_country_effect' mean?", expanded=True):
-        st.markdown("""
-These metrics summarize SHAP values over a sample of rows.
-
-- **avg_abs_item_effect**: average absolute SHAP magnitude for Item_* features.
-  It answers: *how strongly crop choice typically moves estimates up/down?*
-
-- **avg_abs_country_effect**: average absolute SHAP magnitude for Country_* features.
-  It answers: *how strongly country context typically shifts estimates up/down?*
-
-Because we take **absolute values**, this measures **strength of influence**, not direction.
-
- Interpretation:
-- If **avg_abs_item_effect > avg_abs_country_effect**, variation is mainly **crop-driven**.
-- If **avg_abs_country_effect is high**, **country context** plays a stronger structural role.
-        """)
-
-    st.markdown("### A) Aggregated SHAP strength comparison")
-    sample_n = st.slider(
-        "Sample size for aggregated SHAP (speed vs stability)",
-        20,
-        min(200, len(X_test)),
-        min(80, len(X_test)),
-    )
-    X_sample = X_test.sample(sample_n, random_state=42)
-
-    X_trans, names = transform_with_names(pipeline, X_sample)
-    shap_matrix = explainer.shap_values(X_trans, check_additivity=False)
-
-    shap_df = pd.DataFrame(shap_matrix, columns=names)
-    shap_df["Country"] = X_sample["Country"].values
-
-    country_cols = [c for c in names if c.startswith("Country_")]
-    item_cols = [c for c in names if c.startswith("Item_")]
-
-    summary = (
-        shap_df.groupby("Country")
-        .apply(
-            lambda g: pd.Series(
-                {
-                    "avg_abs_country_effect": g[country_cols].abs().mean().mean() if country_cols else 0.0,
-                    "avg_abs_item_effect": g[item_cols].abs().mean().mean() if item_cols else 0.0,
-                }
-            )
+    st.markdown(pills(note["tags"], accent=True), unsafe_allow_html=True)
+
+    st.write(note["lead"])
+
+    with st.expander("Read full note"):
+        st.write("\n".join([f"- {x}" for x in note["bullets"]]))
+
+        st.markdown(
+            f"""
+<div class="callout">
+  <strong>{note["callout_title"]}:</strong> {note["callout"]}
+</div>
+""",
+            unsafe_allow_html=True,
         )
-        .reset_index()
-    )
-    summary["item_to_country_ratio"] = summary["avg_abs_item_effect"] / (summary["avg_abs_country_effect"] + 1e-9)
-    summary = summary.sort_values("item_to_country_ratio", ascending=False)
 
-    st.dataframe(summary, use_container_width=True)
+        st.markdown("**" + note["code_title"] + "**")
+        st.markdown(f"<div class='codebox'><pre>{note['code']}</pre></div>", unsafe_allow_html=True)
 
-    metric = st.selectbox(
-        "Choose what to plot",
-        ["avg_abs_item_effect", "avg_abs_country_effect", "item_to_country_ratio"],
-    )
+    st.markdown("</div>", unsafe_allow_html=True)
 
-    fig_metric = px.bar(
-        summary.sort_values(metric, ascending=False),
-        x="Country",
-        y=metric,
-        title=f"Country comparison: {metric}",
-    )
-    st.plotly_chart(fig_metric, use_container_width=True)
+# -------------------------------------------------
+# Skills
+# -------------------------------------------------
+anchor("skills")
+section("Skills", "Core stack and strengths.")
+cols = st.columns(3)
+for i, (k, items) in enumerate(SKILLS.items()):
+    with cols[i]:
+        st.markdown("<div class='card'>", unsafe_allow_html=True)
+        st.markdown(f"<div class='card-title'>{k}</div>", unsafe_allow_html=True)
+        st.markdown(pills(items), unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
-    st.caption("Tip: ratio > 1 ⇒ crop effects dominate; ratio < 1 ⇒ country context dominates.")
+# -------------------------------------------------
+# Education
+# -------------------------------------------------
+anchor("education")
+section("Education", "Academic foundation with lab-driven skill acquisition.")
+for ed in EDUCATION:
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+    st.markdown(f"<div class='card-title'>{ed['title']}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='card-sub'>{ed['meta']}</div>", unsafe_allow_html=True)
+    st.write("\n".join([f"- {b}" for b in ed["bullets"]]))
+    st.markdown("</div>", unsafe_allow_html=True)
 
-    st.divider()
-    st.markdown("### B) Cross-country composition heatmap (Top items)")
-    st.caption("Compare which items dominate across countries. Switch between Tonnes and within-country share.")
+# -------------------------------------------------
+# Languages
+# -------------------------------------------------
+anchor("languages")
+section("Languages")
+st.markdown("<div class='card'>", unsafe_allow_html=True)
+st.write(LANGUAGES)
+st.markdown("</div>", unsafe_allow_html=True)
 
-    top_k = st.slider("How many top items to include", 10, 40, 20)
+# -------------------------------------------------
+# Contact
+# -------------------------------------------------
+anchor("contact")
+section("Contact")
+st.markdown("<div class='card'>", unsafe_allow_html=True)
+st.write(f"- **Email:** {PROFILE['email']}")
+st.write(f"- **Phone:** {PROFILE['phone']}")
+st.write(f"- **LinkedIn:** {PROFILE['linkedin']}")
+st.markdown("</div>", unsafe_allow_html=True)
 
-    top_items_global = (
-        df.groupby("Item", as_index=False)["Value"]
-        .sum()
-        .sort_values("Value", ascending=False)
-        .head(top_k)["Item"]
-        .tolist()
-    )
-
-    heat = (
-        df[df["Item"].isin(top_items_global)]
-        .groupby(["Item", "Country"], as_index=False)["Value"]
-        .sum()
-    )
-    pivot = heat.pivot(index="Item", columns="Country", values="Value").fillna(0)
-
-    view = st.radio("Heatmap values", ["Tonnes", "Share within country (%)"], horizontal=True)
-    pivot_view = pivot.copy()
-    if view == "Share within country (%)":
-        pivot_view = pivot_view.div(pivot_view.sum(axis=0).replace(0, np.nan), axis=1) * 100
-        pivot_view = pivot_view.fillna(0)
-
-    st.dataframe(pivot_view, use_container_width=True)
-
-    try:
-        fig_h = px.imshow(
-            pivot_view,
-            aspect="auto",
-            title=f"Top {top_k} items: {view}",
-        )
-        st.plotly_chart(fig_h, use_container_width=True)
-    except Exception:
-        st.info("Heatmap rendering skipped (table above is available).")
-
-    with st.expander("How to read this heatmap", expanded=False):
-        st.markdown("""
-- **Tonnes** highlights absolute scale (large producers dominate visually).
-- **Share (%)** highlights structure: which crops matter *within* each country.
-Use Share (%) to avoid confusing scale with composition.
-        """)
-
-    st.divider()
-    st.subheader("Roadmap: Phase 2")
-    st.markdown("""
-If this project is extended, the next steps would focus on turning this prototype into a richer analytical system:
-
-- **Multi-year panel** (add trends, shocks, and seasonal narratives)
-- **Add drivers** (area harvested, yields, trade, rainfall proxies)
-- **Robust validation** (country-aware splits + sensitivity analysis)
-- **Clustering** (group countries by crop profiles, not only totals)
-- **Policy deliverables** (short briefs, confidence bands, scenario comparisons)
-
-    """)
+st.markdown(
+    "<div class='small-muted' style='margin-top:1.2rem;'>Built with Streamlit • Deployed on Streamlit Cloud</div>",
+    unsafe_allow_html=True,
+)
