@@ -510,5 +510,4 @@ If this project is extended, the next steps would focus on turning this prototyp
 - **Clustering** (group countries by crop profiles, not only totals)
 - **Policy deliverables** (short briefs, confidence bands, scenario comparisons)
 
-This roadmap is intentionally included to reflect how the project could evolve into a deeper FAO-style analytical product.
     """)
