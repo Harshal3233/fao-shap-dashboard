@@ -168,7 +168,7 @@ We compute:
 
 Because we take absolute values, this measures **strength**, not direction.
 
-## 5) If I continue this project (planned next steps)
+## 5) Augmentation Phase 2 (planned next steps)
 To deepen analytical value, the next iteration would include:
 1. **Multi-year time series** to study trends and shocks (not only a snapshot).
 2. **Additional drivers** (if available): area harvested, yield, rainfall proxies, prices.
