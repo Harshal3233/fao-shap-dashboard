@@ -502,7 +502,7 @@ Use Share (%) to avoid confusing scale with composition.
     st.divider()
     st.subheader("Roadmap: Phase 2")
     st.markdown("""
-If this project is extended, the next steps would focus on turning this prototype into a richer analytical system:
+The next steps would focus on turning this prototype into a richer analytical system:
 
 - **Multi-year panel** (add trends, shocks, and seasonal narratives)
 - **Add drivers** (area harvested, yields, trade, rainfall proxies)
