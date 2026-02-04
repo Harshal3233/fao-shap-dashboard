@@ -112,7 +112,7 @@ def transform_with_names(pipeline: Pipeline, X: pd.DataFrame):
 # =========================================================
 # Header
 # =========================================================
-st.title("🌾 FAOSTAT Explainable ML Dashboard (Case Study)")
+st.title(" FAOSTAT Explainable ML Dashboard (Case Study)")
 st.caption("Italy • France • Germany • Spain | Explainable ML + Interactive Comparison")
 
 
@@ -120,7 +120,7 @@ st.caption("Italy • France • Germany • Spain | Explainable ML + Interactiv
 # Narrative block: Motivation -> Problem -> Solution -> Theory -> Next steps
 # (More detailed, structured, and intentionally not '100% complete')
 # =========================================================
-with st.expander("📘 Case Study Narrative (Motivation → Problem → Solution → Theory → Next steps)", expanded=True):
+with st.expander(" Case Study Narrative (Motivation → Problem → Solution → Theory → Next steps)", expanded=True):
     st.markdown("""
 ## 1) Motivation (why this matters)
 In international agricultural analysis, decision-makers often need to compare countries transparently:
@@ -398,7 +398,7 @@ These metrics summarize SHAP values over a sample of rows.
 
 Because we take **absolute values**, this measures **strength of influence**, not direction.
 
-✅ Interpretation:
+ Interpretation:
 - If **avg_abs_item_effect > avg_abs_country_effect**, variation is mainly **crop-driven**.
 - If **avg_abs_country_effect is high**, **country context** plays a stronger structural role.
         """)
