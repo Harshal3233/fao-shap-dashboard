@@ -95,8 +95,7 @@ relative_mae = (mae / median_value) * 100 if median_value and not np.isnan(media
 
 
 # =========================================================
-# SHAP explainer
-# IMPORTANT: do NOT cache a function that takes 'pipeline' as param
+# SHAP 
 # =========================================================
 rf_model = pipeline.named_steps["model"]
 explainer = shap.TreeExplainer(rf_model)
@@ -117,8 +116,7 @@ st.caption("Italy • France • Germany • Spain | Explainable ML + Interactiv
 
 
 # =========================================================
-# Narrative block: Motivation -> Problem -> Solution -> Theory -> Next steps
-# (More detailed, structured, and intentionally not '100% complete')
+# Narrative block
 # =========================================================
 with st.expander(" Case Study Narrative (Motivation → Problem → Solution → Theory → Next steps)", expanded=True):
     st.markdown("""
